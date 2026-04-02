@@ -24,12 +24,12 @@ async function startServer() {
       throw new Error('Spotify credentials not configured');
     }
 
-    if (!forceRefresh && spotifyToken && Date.now() < spotifyTokenExpiresAt) {
-      return spotifyToken;
+    if (spotifyTokenPromise) {
+      return spotifyTokenPromise;
     }
 
-    if (spotifyTokenPromise && !forceRefresh) {
-      return spotifyTokenPromise;
+    if (!forceRefresh && spotifyToken && Date.now() < spotifyTokenExpiresAt) {
+      return spotifyToken;
     }
 
     spotifyTokenPromise = (async () => {
@@ -80,25 +80,28 @@ async function startServer() {
       const TTL = 60 * 60; // 1 hour
 
       const data = await fetchWithCache(cacheKey, TTL, async () => {
-        let token = await getSpotifyToken();
-        let response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=15`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'User-Agent': 'ShelveApp/1.0'
-          }
-        });
-
-        if (response.status === 401) {
-          // Token might be expired or invalid, clear it and retry once
-          token = await getSpotifyToken(true);
-          response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=15`, {
+        const fetchSpotifySearch = async (token: string) => {
+          const params = new URLSearchParams({
+            q: query,
+            type: type,
+            limit: '15'
+          });
+          return fetch(`https://api.spotify.com/v1/search?${params.toString()}`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Accept': 'application/json',
               'User-Agent': 'ShelveApp/1.0'
             }
           });
+        };
+
+        let token = await getSpotifyToken();
+        let response = await fetchSpotifySearch(token);
+
+        if (response.status === 401) {
+          // Token might be expired or invalid, clear it and retry once
+          token = await getSpotifyToken(true);
+          response = await fetchSpotifySearch(token);
         }
 
         if (!response.ok) {
