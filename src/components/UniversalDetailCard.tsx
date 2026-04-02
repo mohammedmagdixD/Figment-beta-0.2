@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MediaCard } from './MediaCard';
 import { MediaDetailsModal } from './MediaDetailsModal';
 import { SpotifyIcon, AppleMusicIcon, YouTubeMusicIcon, TidalIcon, DeezerIcon, SoundCloudIcon } from './StreamingIcons';
+import { fetchRelatedMedia } from '../services/api';
 
 interface UniversalDetailCardProps {
   data: UniversalMediaData;
@@ -24,9 +25,9 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
   }, [data.streamingLinks]);
 
   useEffect(() => {
-    if (data.fetchRelatedLists && (!data.relatedLists || data.relatedLists.length === 0)) {
+    if (!data.relatedLists || data.relatedLists.length === 0) {
       setIsLoadingRelated(true);
-      data.fetchRelatedLists()
+      fetchRelatedMedia(data)
         .then(lists => {
           setRelatedLists(lists);
         })

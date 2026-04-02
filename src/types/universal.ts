@@ -37,6 +37,5 @@ export interface UniversalMediaData {
     listTitle: string;
     items: UniversalMediaData[];
   }[];
-  fetchRelatedLists?: () => Promise<{ listTitle: string; items: UniversalMediaData[] }[]>;
   streamingLinks?: any;
 }

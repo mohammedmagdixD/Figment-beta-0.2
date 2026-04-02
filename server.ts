@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { FetchError, isFetchError } from './src/types/api';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fetchWithCache } from './src/utils/cache';
@@ -13,8 +14,9 @@ async function startServer() {
   // Spotify Auth Token Cache
   let spotifyToken: string | null = null;
   let spotifyTokenExpiresAt = 0;
+  let spotifyTokenPromise: Promise<string> | null = null;
 
-  async function getSpotifyToken() {
+  async function getSpotifyToken(forceRefresh = false) {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
@@ -22,39 +24,49 @@ async function startServer() {
       throw new Error('Spotify credentials not configured');
     }
 
-    if (spotifyToken && Date.now() < spotifyTokenExpiresAt) {
+    if (!forceRefresh && spotifyToken && Date.now() < spotifyTokenExpiresAt) {
       return spotifyToken;
     }
 
-    try {
-      const response = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
-          'User-Agent': 'ShelveApp/1.0'
-        },
-        body: 'grant_type=client_credentials'
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error('Failed to get Spotify token:', errText);
-        throw new Error(`Failed to get Spotify token: ${response.status} ${errText}`);
-      }
-
-      const data = await response.json();
-      if (!data.access_token) {
-        console.error('Spotify token response missing access_token:', data);
-        throw new Error('Spotify token response missing access_token');
-      }
-      spotifyToken = data.access_token;
-      spotifyTokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000; // Expire 1 min early
-      return spotifyToken;
-    } catch (error) {
-      console.error('Error during Spotify token handshake:', error);
-      throw error;
+    if (spotifyTokenPromise && !forceRefresh) {
+      return spotifyTokenPromise;
     }
+
+    spotifyTokenPromise = (async () => {
+      try {
+        const response = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
+            'User-Agent': 'ShelveApp/1.0'
+          },
+          body: 'grant_type=client_credentials'
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error('Failed to get Spotify token:', errText);
+          throw new Error(`Failed to get Spotify token: ${response.status} ${errText}`);
+        }
+
+        const data = await response.json();
+        if (!data.access_token) {
+          console.error('Spotify token response missing access_token:', data);
+          throw new Error('Spotify token response missing access_token');
+        }
+        spotifyToken = data.access_token;
+        spotifyTokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000; // Expire 1 min early
+        return spotifyToken;
+      } catch (error) {
+        console.error('Error during Spotify token handshake:', error);
+        throw error;
+      } finally {
+        spotifyTokenPromise = null;
+      }
+    })();
+
+    return spotifyTokenPromise;
   }
 
   // API Routes
@@ -79,8 +91,7 @@ async function startServer() {
 
         if (response.status === 401) {
           // Token might be expired or invalid, clear it and retry once
-          spotifyToken = null;
-          token = await getSpotifyToken();
+          token = await getSpotifyToken(true);
           response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=15`, {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -96,43 +107,24 @@ async function startServer() {
             // Gracefully handle 403 Forbidden
             return { results: [] };
           }
-          const err: any = new Error(`Spotify API error: ${response.status} ${errText}`);
+          const err = new Error(`Spotify API error: ${response.status} ${errText}`) as FetchError;
           err.status = response.status;
           throw err;
         }
 
         const data = await response.json();
-        let results = [];
-
-        if (type === 'show' && data.shows) {
-          results = data.shows.items.map((item: any) => ({
-            id: item.id,
-            title: item.name,
-            subtitle: item.publisher,
-            image: item.images[0]?.url || 'https://via.placeholder.com/600',
-            url: item.external_urls.spotify,
-            description: item.description
-          }));
-        } else if (data.tracks) {
-          results = data.tracks.items.map((item: any) => ({
-            id: item.id,
-            title: item.name,
-            subtitle: item.artists.map((a: any) => a.name).join(', '),
-            image: item.album.images[0]?.url || 'https://via.placeholder.com/600',
-            url: item.external_urls.spotify,
-            previewUrl: item.preview_url
-          }));
-        }
-        return { results };
+        return data;
       });
 
       res.setHeader('Cache-Control', `public, max-age=${TTL}`);
       res.json(data);
-    } catch (error: any) {
-      if (error.status !== 429) {
+    } catch (error: unknown) {
+      if (isFetchError(error) && error.status !== 429) {
         console.error('Spotify search error:', error.message || error);
+      } else if (!isFetchError(error)) {
+        console.error('Spotify search error:', error);
       }
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(isFetchError(error) && error.status ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -140,14 +132,17 @@ async function startServer() {
   app.get('/api/mal/*', async (req, res) => {
     try {
       const endpoint = req.params[0];
-      const queryParams = new URLSearchParams(req.query as any).toString();
+      const queryParams = new URLSearchParams(req.query as Record<string, string>).toString();
       const url = `https://api.myanimelist.net/v2/${endpoint}${queryParams ? `?${queryParams}` : ''}`;
       
       const cacheKey = `mal:${endpoint}:${queryParams}`;
       const TTL = 24 * 60 * 60; // 24 hours
 
       const data = await fetchWithCache(cacheKey, TTL, async () => {
-        const clientId = process.env.MAL_CLIENT_ID || '6114d00ca681b7701d1e15fe11a4987e';
+        const clientId = process.env.MAL_CLIENT_ID;
+        if (!clientId) {
+          throw new Error('MAL_CLIENT_ID not configured');
+        }
         
         const response = await fetch(url, {
           headers: {
@@ -157,7 +152,7 @@ async function startServer() {
 
         if (!response.ok) {
           const errText = await response.text();
-          const err: any = new Error(`MAL API error: ${response.status} ${errText}`);
+          const err = new Error(`MAL API error: ${response.status} ${errText}`) as FetchError;
           err.status = response.status;
           throw err;
         }
@@ -167,11 +162,13 @@ async function startServer() {
 
       res.setHeader('Cache-Control', `public, max-age=${TTL}`);
       res.json(data);
-    } catch (error: any) {
-      if (error.status !== 429) {
+    } catch (error: unknown) {
+      if (isFetchError(error) && error.status !== 429) {
         console.error('MAL API error:', error.message || error);
+      } else if (!isFetchError(error)) {
+        console.error('MAL API error:', error);
       }
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(isFetchError(error) && error.status ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -200,7 +197,7 @@ async function startServer() {
         
         if (!response.ok) {
           const errText = await response.text();
-          const err: any = new Error(`Odesli API error: ${response.status} ${errText}`);
+          const err = new Error(`Odesli API error: ${response.status} ${errText}`) as FetchError;
           err.status = response.status;
           throw err;
         }
@@ -210,11 +207,13 @@ async function startServer() {
       
       res.setHeader('Cache-Control', `public, max-age=${TTL}`);
       res.json(data);
-    } catch (error: any) {
-      if (error.status !== 429) {
+    } catch (error: unknown) {
+      if (isFetchError(error) && error.status !== 429) {
         console.error('Odesli proxy error:', error.message || error);
+      } else if (!isFetchError(error)) {
+        console.error('Odesli proxy error:', error);
       }
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(isFetchError(error) && error.status ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -222,7 +221,7 @@ async function startServer() {
   app.get('/api/tmdb/*', async (req, res) => {
     try {
       const endpoint = req.params[0];
-      const queryParams = new URLSearchParams(req.query as any);
+      const queryParams = new URLSearchParams(req.query as Record<string, string>);
       
       // Remove any client-provided api_key to ensure we use the server's key
       queryParams.delete('api_key');
@@ -247,7 +246,7 @@ async function startServer() {
 
         if (!response.ok) {
           const errText = await response.text();
-          const err: any = new Error(`TMDB API error: ${response.status} ${errText}`);
+          const err = new Error(`TMDB API error: ${response.status} ${errText}`) as FetchError;
           err.status = response.status;
           throw err;
         }
@@ -257,11 +256,13 @@ async function startServer() {
 
       res.setHeader('Cache-Control', `public, max-age=${TTL}`);
       res.json(data);
-    } catch (error: any) {
-      if (error.status !== 429) {
+    } catch (error: unknown) {
+      if (isFetchError(error) && error.status !== 429) {
         console.error('TMDB API error:', error.message || error);
+      } else if (!isFetchError(error)) {
+        console.error('TMDB API error:', error);
       }
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(isFetchError(error) && error.status ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -269,7 +270,7 @@ async function startServer() {
   app.get('/api/books/*', async (req, res) => {
     try {
       const endpoint = req.params[0];
-      const queryParams = new URLSearchParams(req.query as any);
+      const queryParams = new URLSearchParams(req.query as Record<string, string>);
       
       // Remove any client-provided key to ensure we use the server's key
       queryParams.delete('key');
@@ -293,7 +294,7 @@ async function startServer() {
 
         if (!response.ok) {
           const errText = await response.text();
-          const err: any = new Error(`Google Books API error: ${response.status} ${errText}`);
+          const err = new Error(`Google Books API error: ${response.status} ${errText}`) as FetchError;
           err.status = response.status;
           throw err;
         }
@@ -303,11 +304,13 @@ async function startServer() {
 
       res.setHeader('Cache-Control', `public, max-age=${TTL}`);
       res.json(data);
-    } catch (error: any) {
-      if (error.status !== 429) {
+    } catch (error: unknown) {
+      if (isFetchError(error) && error.status !== 429) {
         console.error('Google Books API error:', error.message || error);
+      } else if (!isFetchError(error)) {
+        console.error('Google Books API error:', error);
       }
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(isFetchError(error) && error.status ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 

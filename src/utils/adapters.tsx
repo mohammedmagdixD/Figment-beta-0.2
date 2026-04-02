@@ -5,7 +5,151 @@ import { UniversalListItem } from '../components/UniversalListItem';
 import { motion } from 'motion/react';
 import { haptics } from '../utils/haptics';
 import { Search } from 'lucide-react';
-import { fetchWithBackoff, getHighResBookCover } from '../services/api';
+import { getHighResBookCover, SearchResult, AnimeDetails, MangaDetails } from '../services/api';
+import {
+  SpotifySearchResponse, SpotifyTrack, SpotifyShow,
+  TMDBSearchResponse, TMDBMovie, TMDBTv,
+  MALSearchResponse, MALAnime, MALManga,
+  GoogleBooksResponse, GoogleBooksVolume,
+  OpenLibrarySearchResponse, OpenLibraryDoc,
+  ITunesSearchResponse, ITunesTrack, ITunesPodcast,
+  TMDBMovieDetails, TMDBTvDetails, GoogleBooksVolumeDetails, ITunesAudioDetails, ITunesAudioAdapterInput
+} from '../types/api';
+
+export function spotifySearchAdapter(data: SpotifySearchResponse, type: 'track' | 'show'): SearchResult[] {
+  if (type === 'show' && data.shows) {
+    return data.shows.items.map((item: SpotifyShow) => ({
+      id: item.id,
+      title: item.name,
+      subtitle: item.publisher,
+      image: item.images[0]?.url || 'https://via.placeholder.com/600',
+      url: item.external_urls.spotify,
+      description: undefined // SpotifyShow doesn't have description in our type, or we can add it
+    }));
+  } else if (type === 'track' && data.tracks) {
+    return data.tracks.items.map((item: SpotifyTrack) => ({
+      id: item.id,
+      title: item.name,
+      subtitle: item.artists.map((a) => a.name).join(', '),
+      image: item.album.images[0]?.url || 'https://via.placeholder.com/600',
+      url: item.external_urls.spotify,
+      previewUrl: undefined // SpotifyTrack doesn't have preview_url in our type, let's add it
+    }));
+  }
+  return [];
+}
+
+export function tmdbSearchAdapter(data: TMDBSearchResponse, type: 'movie' | 'tv'): SearchResult[] {
+  return (data.results || []).map((item: TMDBMovie | TMDBTv) => {
+    const isMovie = type === 'movie' || item.media_type === 'movie';
+    const title = 'title' in item ? item.title : item.name;
+    const releaseDate = 'release_date' in item ? item.release_date : item.first_air_date;
+    return {
+      id: item.id.toString(),
+      title: title,
+      subtitle: releaseDate ? releaseDate.split('-')[0] : (isMovie ? 'Movie' : 'TV Show'),
+      image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
+      url: `https://www.themoviedb.org/${type}/${item.id}`,
+      description: item.overview
+    };
+  });
+}
+
+export function googleBooksSearchAdapter(data: GoogleBooksResponse, query: string, type: 'book' | 'webnovel'): SearchResult[] {
+  let items = data.items || [];
+  
+  if (type === 'book') {
+    const badKeywords = ['summary of', 'study guide', 'analysis of', 'review of', 'notes on', 'workbook for', 'instaread', 'chapter by chapter', 'summary & analysis'];
+    const queryLower = query.toLowerCase();
+    const queryHasBadWord = badKeywords.some(kw => queryLower.includes(kw));
+    
+    if (!queryHasBadWord) {
+      items = items.filter((item: GoogleBooksVolume) => {
+        const title = (item.volumeInfo.title || '').toLowerCase();
+        const subtitle = ((item.volumeInfo as any).subtitle || '').toLowerCase();
+        return !badKeywords.some(kw => title.includes(kw) || subtitle.includes(kw));
+      });
+    }
+  }
+
+  items.sort((a: GoogleBooksVolume, b: GoogleBooksVolume) => {
+    const aHasCover = !!a.volumeInfo.imageLinks?.thumbnail;
+    const bHasCover = !!b.volumeInfo.imageLinks?.thumbnail;
+    if (aHasCover && !bHasCover) return -1;
+    if (!aHasCover && bHasCover) return 1;
+    
+    const aHasAuthor = !!(a.volumeInfo.authors && a.volumeInfo.authors.length > 0);
+    const bHasAuthor = !!(b.volumeInfo.authors && b.volumeInfo.authors.length > 0);
+    if (aHasAuthor && !bHasAuthor) return -1;
+    if (!aHasAuthor && bHasAuthor) return 1;
+    
+    const aHasDesc = !!a.volumeInfo.description;
+    const bHasDesc = !!b.volumeInfo.description;
+    if (aHasDesc && !bHasDesc) return -1;
+    if (!aHasDesc && bHasDesc) return 1;
+
+    return 0;
+  });
+
+  items = items.slice(0, 15);
+
+  return items.map((item: GoogleBooksVolume) => {
+    const info = item.volumeInfo;
+    return {
+      id: item.id,
+      title: info.title,
+      subtitle: info.authors ? info.authors.join(', ') : 'Unknown Author',
+      image: getHighResBookCover(info.imageLinks?.thumbnail),
+      url: (info as any).infoLink,
+      description: typeof info.description === 'string' ? info.description : info.description?.value
+    };
+  });
+}
+
+export function openLibrarySearchAdapter(data: OpenLibrarySearchResponse): SearchResult[] {
+  return (data.docs || []).map((item: OpenLibraryDoc) => ({
+    id: item.key.replace('/works/', ''),
+    title: item.title,
+    subtitle: item.author_name ? item.author_name.join(', ') : 'Unknown Author',
+    image: item.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg` : 'https://placehold.co/300x400/1a1a1a/ffffff?text=No+Cover',
+    url: `https://openlibrary.org${item.key}`,
+    description: (item as any).first_sentence ? (typeof (item as any).first_sentence === 'string' ? (item as any).first_sentence : (item as any).first_sentence[0]) : ''
+  }));
+}
+
+export function malSearchAdapter(data: MALSearchResponse, type: 'anime' | 'manga'): SearchResult[] {
+  return (data.data || []).map((item: MALAnime | MALManga) => ({
+    id: item.node.id.toString(),
+    title: item.node.title,
+    subtitle: (item.node as any).start_season ? (item.node as any).start_season.year.toString() : item.node.media_type,
+    image: item.node.main_picture?.large || item.node.main_picture?.medium || 'https://placehold.co/300x400/1a1a1a/ffffff?text=No+Cover',
+    url: `https://myanimelist.net/${type}/${item.node.id}`,
+    description: (item.node as any).synopsis || ''
+  }));
+}
+
+export function itunesSearchAdapter(data: ITunesSearchResponse, type: 'podcast' | 'music'): SearchResult[] {
+  if (type === 'podcast') {
+    return (data.results || []).map((item: ITunesTrack | ITunesPodcast) => ({
+      id: item.collectionId?.toString(),
+      title: item.collectionName || '',
+      subtitle: item.artistName,
+      image: item.artworkUrl600 || item.artworkUrl100?.replace('100x100bb', '600x600bb') || 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
+      url: (item as any).collectionViewUrl,
+      description: item.collectionName
+    }));
+  } else {
+    return (data.results || []).map((item: ITunesTrack | ITunesPodcast) => ({
+      id: ('trackId' in item ? item.trackId : item.collectionId).toString(),
+      title: 'trackName' in item ? item.trackName : item.collectionName || '',
+      subtitle: item.artistName,
+      image: item.artworkUrl100?.replace('100x100bb', '600x600bb') || 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
+      url: (item as any).trackViewUrl,
+      previewUrl: 'previewUrl' in item ? item.previewUrl : undefined,
+      description: item.collectionName
+    }));
+  }
+}
 
 function baseMalAdapter(data: any, type: 'anime' | 'manga'): UniversalMediaData {
   const isAnime = type === 'anime';
@@ -66,7 +210,7 @@ function baseMalAdapter(data: any, type: 'anime' | 'manga'): UniversalMediaData 
   };
 }
 
-export function malAnimeAdapter(data: any): UniversalMediaData {
+export function malAnimeAdapter(data: AnimeDetails): UniversalMediaData {
   const baseData = baseMalAdapter(data, 'anime');
   
   const relatedLists: Array<{ listTitle: string; items: UniversalMediaData[] }> = [];
@@ -124,7 +268,7 @@ export function malAnimeAdapter(data: any): UniversalMediaData {
   return baseData;
 }
 
-export function malMangaAdapter(data: any): UniversalMediaData {
+export function malMangaAdapter(data: MangaDetails): UniversalMediaData {
   return baseMalAdapter(data, 'manga');
 }
 
@@ -215,11 +359,11 @@ function baseTmdbAdapter(data: any, item: any, type: 'movie' | 'tv'): UniversalM
   };
 }
 
-export function tmdbMovieAdapter(data: any, item: any): UniversalMediaData {
+export function tmdbMovieAdapter(data: TMDBMovieDetails, item: SearchResult): UniversalMediaData {
   return baseTmdbAdapter(data, item, 'movie');
 }
 
-export function tmdbTvAdapter(data: any, item: any): UniversalMediaData {
+export function tmdbTvAdapter(data: TMDBTvDetails, item: SearchResult): UniversalMediaData {
   return baseTmdbAdapter(data, item, 'tv');
 }
 
@@ -300,33 +444,33 @@ export function itunesPodcastAdapter(
   };
 }
 
-export function googleBooksAdapter(data: any, type: string = 'book'): UniversalMediaData {
-  const info = data.volumeInfo || {};
-  const access = data.accessInfo || {};
+export function googleBooksAdapter(data: GoogleBooksVolumeDetails, type: string = 'book'): UniversalMediaData {
+  const info = data.volumeInfo;
+  const access = data.accessInfo;
   
   // Image handling
-  const imageUrl = getHighResBookCover(info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail);
+  const imageUrl = getHighResBookCover(info?.imageLinks?.thumbnail || info?.imageLinks?.smallThumbnail);
 
   // Description handling: strip HTML tags
-  const rawDescription = info.description || '';
-  const cleanDescription = rawDescription.replace(/<[^>]*>?/gm, '');
+  const rawDescription = info?.description || '';
+  const cleanDescription = typeof rawDescription === 'string' ? rawDescription.replace(/<[^>]*>?/gm, '') : (rawDescription.value || '').replace(/<[^>]*>?/gm, '');
 
   const stats = [];
-  if (info.averageRating) {
+  if (info?.averageRating) {
     stats.push({ label: 'Rating', value: info.averageRating.toString() });
   }
-  if (info.pageCount) {
+  if (info?.pageCount) {
     stats.push({ label: 'Pages', value: `${info.pageCount} Pages` });
   }
-  if (info.publishedDate) {
+  if (info?.publishedDate) {
     stats.push({ label: 'Published', value: info.publishedDate.substring(0, 4) });
   }
 
-  const limitedCategories = info.categories ? info.categories.slice(0, 3) : [];
-  const limitedAuthors = info.authors ? info.authors.slice(0, 2) : [];
+  const limitedCategories = info?.categories ? info.categories.slice(0, 3) : [];
+  const limitedAuthors = info?.authors ? info.authors.slice(0, 2) : [];
 
   const metadata = [];
-  if (info.publisher) {
+  if (info?.publisher) {
     metadata.push({ label: 'Publisher', value: info.publisher });
   }
   if (limitedCategories.length > 0) {
@@ -335,159 +479,23 @@ export function googleBooksAdapter(data: any, type: string = 'book'): UniversalM
   metadata.push({ label: 'Format', value: type === 'webnovel' ? 'Webnovel' : 'Book' });
 
   const extras = [];
-  if (info.industryIdentifiers) {
+  if (info?.industryIdentifiers) {
     info.industryIdentifiers.forEach((id: any) => {
       extras.push({ label: id.type.replace('_', ' '), value: id.identifier });
     });
   }
-  if (info.language) {
+  if (info?.language) {
     extras.push({ label: 'Language', value: info.language.toUpperCase() });
   }
 
   let actionButton;
-  if (info.previewLink || access.webReaderLink) {
+  if (info?.previewLink || access?.webReaderLink) {
     actionButton = {
       type: 'read' as const,
-      payload: info.previewLink || access.webReaderLink,
+      payload: info?.previewLink || access?.webReaderLink,
       label: 'Read Sample'
     };
   }
-
-  const fetchRelatedLists = async () => {
-    const relatedLists: { listTitle: string; items: UniversalMediaData[] }[] = [];
-    
-    try {
-      if (info.authors && info.authors.length > 0) {
-        const author = info.authors[0];
-        let items: UniversalMediaData[] = [];
-        try {
-          const authorRes = await fetchWithBackoff(`/api/books/volumes?q=inauthor:"${encodeURIComponent(author)}"&printType=books&maxResults=30`, undefined, 0);
-          if (!authorRes.ok) throw new Error('Google Books API failed');
-          const authorData = await authorRes.json();
-          if (authorData.items) {
-            let authorItems = authorData.items.filter((item: any) => item.id !== data.id);
-            
-            // Sort to push items without covers or descriptions to the bottom
-            authorItems.sort((a: any, b: any) => {
-              const aHasCover = !!a.volumeInfo.imageLinks?.thumbnail;
-              const bHasCover = !!b.volumeInfo.imageLinks?.thumbnail;
-              if (aHasCover && !bHasCover) return -1;
-              if (!aHasCover && bHasCover) return 1;
-              
-              const aHasDesc = !!a.volumeInfo.description;
-              const bHasDesc = !!b.volumeInfo.description;
-              if (aHasDesc && !bHasDesc) return -1;
-              if (!aHasDesc && bHasDesc) return 1;
-
-              return 0;
-            });
-
-            items = authorItems
-              .slice(0, 10)
-              .map((item: any) => {
-                const mapped = googleBooksAdapter(item, 'book');
-                delete mapped.fetchRelatedLists;
-                return mapped;
-              });
-          }
-        } catch (e) {
-          console.warn('Falling back to OpenLibrary for related author books');
-          const olRes = await fetchWithBackoff(`https://openlibrary.org/search.json?author=${encodeURIComponent(author)}&limit=10`);
-          if (olRes.ok) {
-            const olData = await olRes.json();
-            items = (olData.docs || [])
-              .filter((item: any) => item.key.replace('/works/', '') !== data.id)
-              .map((item: any) => {
-                const mapped = googleBooksAdapter({
-                  id: item.key.replace('/works/', ''),
-                  volumeInfo: {
-                    title: item.title,
-                    authors: item.author_name,
-                    imageLinks: {
-                      thumbnail: item.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg` : null
-                    }
-                  }
-                }, 'book');
-                delete mapped.fetchRelatedLists;
-                return mapped;
-              });
-          }
-        }
-        if (items.length > 0) {
-          relatedLists.push({ listTitle: `More by ${author}`, items });
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch related author books', e);
-    }
-
-    try {
-      if (info.categories && info.categories.length > 0) {
-        const category = info.categories[0];
-        let items: UniversalMediaData[] = [];
-        try {
-          const categoryRes = await fetchWithBackoff(`/api/books/volumes?q=subject:"${encodeURIComponent(category)}"&printType=books&maxResults=30`, undefined, 0);
-          if (!categoryRes.ok) throw new Error('Google Books API failed');
-          const categoryData = await categoryRes.json();
-          if (categoryData.items) {
-            let categoryItems = categoryData.items.filter((item: any) => item.id !== data.id);
-            
-            // Sort to push items without covers or descriptions to the bottom
-            categoryItems.sort((a: any, b: any) => {
-              const aHasCover = !!a.volumeInfo.imageLinks?.thumbnail;
-              const bHasCover = !!b.volumeInfo.imageLinks?.thumbnail;
-              if (aHasCover && !bHasCover) return -1;
-              if (!aHasCover && bHasCover) return 1;
-              
-              const aHasDesc = !!a.volumeInfo.description;
-              const bHasDesc = !!b.volumeInfo.description;
-              if (aHasDesc && !bHasDesc) return -1;
-              if (!aHasDesc && bHasDesc) return 1;
-
-              return 0;
-            });
-
-            items = categoryItems
-              .slice(0, 10)
-              .map((item: any) => {
-                const mapped = googleBooksAdapter(item, 'book');
-                delete mapped.fetchRelatedLists;
-                return mapped;
-              });
-          }
-        } catch (e) {
-          console.warn('Falling back to OpenLibrary for similar books');
-          const olRes = await fetchWithBackoff(`https://openlibrary.org/search.json?subject=${encodeURIComponent(category)}&limit=10`);
-          if (olRes.ok) {
-            const olData = await olRes.json();
-            items = (olData.docs || [])
-              .filter((item: any) => item.key.replace('/works/', '') !== data.id)
-              .map((item: any) => {
-                const mapped = googleBooksAdapter({
-                  id: item.key.replace('/works/', ''),
-                  volumeInfo: {
-                    title: item.title,
-                    authors: item.author_name,
-                    imageLinks: {
-                      thumbnail: item.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg` : null
-                    }
-                  }
-                }, 'book');
-                delete mapped.fetchRelatedLists;
-                return mapped;
-              });
-          }
-        }
-        if (items.length > 0) {
-          relatedLists.push({ listTitle: 'Similar Books', items });
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch similar books', e);
-    }
-
-    return relatedLists;
-  };
 
   return {
     id: data.id.toString(),
@@ -508,12 +516,11 @@ export function googleBooksAdapter(data: any, type: string = 'book'): UniversalM
     scrollableSections: {
       genres: limitedCategories,
       extras
-    },
-    fetchRelatedLists
+    }
   };
 }
 
-function mapItunesTrack(trackDetails: any, item: any, backdropUrl: string | null, backdropFallback: boolean, actionButton: any): UniversalMediaData {
+export function mapItunesTrack(trackDetails: ITunesAudioDetails | null | undefined, item: any, backdropUrl: string | null | undefined, backdropFallback: boolean, actionButton: any): UniversalMediaData {
   const duration = trackDetails?.trackTimeMillis 
     ? `${Math.floor(trackDetails.trackTimeMillis / 60000)}:${Math.floor((trackDetails.trackTimeMillis % 60000) / 1000).toString().padStart(2, '0')}` 
     : null;
@@ -571,156 +578,10 @@ function mapItunesTrack(trackDetails: any, item: any, backdropUrl: string | null
   };
 }
 
-export async function itunesAudioAdapter(item: any): Promise<UniversalMediaData> {
-  let backdropUrl: string | null = null;
-  let backdropFallback = false;
-  let actionButton: any = undefined;
-  let streamingLinks: any = null;
-
-  const artistName = item.subtitle || item.header?.subtitle || '';
-
-  const isSpotify = item.url?.includes('spotify.com');
-  const platform = isSpotify ? 'spotify' : 'itunes';
-
-  // Step 1: Fetch Odesli Links
-  let videoId: string | null = null;
-  try {
-    const odesliType = item.type === 'album' ? 'album' : 'song';
-    const odesliUrl = isSpotify && item.url
-      ? `/api/odesli?url=${encodeURIComponent(item.url)}`
-      : `/api/odesli?platform=${platform}&type=${odesliType}&id=${item.id}`;
-    console.log('Fetching Odesli:', odesliUrl);
-    const res = await fetchWithBackoff(odesliUrl);
-    if (res.ok) {
-      const data = await res.json();
-      console.log('Odesli data:', data);
-      if (data && data.linksByPlatform) {
-        streamingLinks = data.linksByPlatform;
-        console.log('Streaming links set:', streamingLinks);
-        
-        // Extract YouTube video ID from Odesli links
-        const ytEntity = streamingLinks.youtube || streamingLinks.youtubeMusic;
-        if (ytEntity && ytEntity.entityUniqueId) {
-          const entityData = data.entitiesByUniqueId?.[ytEntity.entityUniqueId];
-          if (entityData && entityData.thumbnailUrl) {
-            backdropUrl = entityData.thumbnailUrl;
-          }
-          
-          const parts = ytEntity.entityUniqueId.split('::');
-          if (parts.length > 1 && parts[1].length === 11) {
-            videoId = parts[1];
-          }
-        }
-        
-        // Fallback to URL regex if entityUniqueId is missing or didn't work
-        if (!videoId) {
-          const ytLink = streamingLinks.youtube?.url || streamingLinks.youtubeMusic?.url;
-          if (ytLink) {
-            const match = ytLink.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
-            if (match && match[1]) {
-              videoId = match[1];
-            }
-          }
-        }
-      }
-    } else {
-      console.error('Odesli fetch failed with status:', res.status);
-    }
-  } catch (e) {
-    console.debug('Odesli API failed in adapter', e);
-  }
-
-  if (videoId) {
-    if (!backdropUrl) {
-      backdropUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-    }
-    actionButton = {
-      type: 'trailer',
-      payload: `https://www.youtube.com/watch?v=${videoId}`
-    };
-  }
-
-  // Step 2: TheAudioDB (Fallback 1)
-  if (!backdropUrl) {
-    try {
-      const adbRes = await fetchWithBackoff(`https://www.theaudiodb.com/api/v1/json/2/search.php?s=${encodeURIComponent(artistName)}`);
-      if (adbRes.ok) {
-        const adbData = await adbRes.json();
-        if (adbData.artists && adbData.artists.length > 0 && adbData.artists[0].strArtistFanart) {
-          backdropUrl = adbData.artists[0].strArtistFanart;
-        }
-      }
-    } catch (e) {
-      console.warn('TheAudioDB API failed', e);
-    }
-  }
-
-  // Step 3: iTunes square album art (Fallback 2)
-  if (!backdropUrl) {
-    const imageUrl = item.image || item.images?.posterUrl;
-    backdropUrl = imageUrl?.replace('100x100bb', '600x600bb') || imageUrl;
-    backdropFallback = true;
-  }
-
-  let trackDetails: any = null;
-  try {
-    const itunesRes = await fetchWithBackoff(`https://itunes.apple.com/lookup?id=${item.id}`);
-    if (itunesRes.ok) {
-      const itunesData = await itunesRes.json();
-      if (itunesData.results && itunesData.results.length > 0) {
-        trackDetails = itunesData.results[0];
-      }
-    }
-  } catch (e) {
-    console.error('iTunes lookup failed', e);
-  }
-
+export function itunesAudioAdapter(data: ITunesAudioAdapterInput): UniversalMediaData {
+  const { trackDetails, item, backdropUrl, backdropFallback, actionButton, streamingLinks } = data;
   const mappedData = mapItunesTrack(trackDetails, item, backdropUrl, backdropFallback, actionButton);
   mappedData.streamingLinks = streamingLinks;
-
-  mappedData.fetchRelatedLists = async () => {
-    const relatedLists: { listTitle: string; items: UniversalMediaData[] }[] = [];
-    
-    if (trackDetails?.collectionId) {
-      try {
-        const albumRes = await fetchWithBackoff(`https://itunes.apple.com/lookup?id=${trackDetails.collectionId}&entity=song`);
-        if (albumRes.ok) {
-          const albumData = await albumRes.json();
-          const albumTracks = albumData.results.filter((res: any) => res.wrapperType === 'track' && res.trackId !== trackDetails.trackId);
-          
-          if (albumTracks.length > 0) {
-            relatedLists.push({
-              listTitle: "More from this Album",
-              items: albumTracks.map((track: any) => mapItunesTrack(track, { type: 'song' }, null, true, undefined))
-            });
-          }
-        }
-      } catch (e) {
-        console.error('iTunes album lookup failed', e);
-      }
-    }
-
-    if (trackDetails?.artistId) {
-      try {
-        const artistRes = await fetchWithBackoff(`https://itunes.apple.com/lookup?id=${trackDetails.artistId}&entity=song&limit=11`);
-        if (artistRes.ok) {
-          const artistData = await artistRes.json();
-          const artistTracks = artistData.results.filter((res: any) => res.wrapperType === 'track' && res.trackId !== trackDetails.trackId).slice(0, 10);
-          
-          if (artistTracks.length > 0) {
-            relatedLists.push({
-              listTitle: "More from this Artist",
-              items: artistTracks.map((track: any) => mapItunesTrack(track, { type: 'song' }, null, true, undefined))
-            });
-          }
-        }
-      } catch (e) {
-        console.error('iTunes artist lookup failed', e);
-      }
-    }
-
-    return relatedLists;
-  };
 
   return mappedData;
 }

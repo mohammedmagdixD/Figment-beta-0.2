@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useAnimation, PanInfo, useDragControls } from 'motion/react';
 import { Star, Loader2, ArrowLeft } from 'lucide-react';
-import { SearchResult, getPodcastEpisodes, PodcastEpisode, getMovieDetails, getTvDetails, MovieDetails, getAnimeDetails, getMangaDetails, AnimeDetails, MangaDetails, getBookDetails } from '../services/api';
+import { SearchResult, getPodcastEpisodes, PodcastEpisode, getMovieDetails, getTvDetails, MovieDetails, getAnimeDetails, getMangaDetails, AnimeDetails, MangaDetails, getBookDetails, getAudioDetails } from '../services/api';
 import { IOSDatePicker } from './IOSDatePicker';
 import { haptics } from '../utils/haptics';
 import { useScrollLock } from '../hooks/useScrollLock';
@@ -71,7 +71,7 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
             case 'song':
             case 'music':
             case 'album':
-              data = await itunesAudioAdapter(item);
+              data = await getAudioDetails(item);
               break;
             default:
               data = item;
@@ -213,7 +213,7 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
     } else if ((item.type === 'book' || item.type === 'webnovel') && mediaDetails) {
       normalizedData = googleBooksAdapter(mediaDetails, item.type);
     } else if ((item.type === 'music' || item.type === 'song' || item.type === 'album') && mediaDetails) {
-      normalizedData = mediaDetails;
+      normalizedData = itunesAudioAdapter(mediaDetails);
     } else {
       normalizedData = genericAdapter(item);
     }
