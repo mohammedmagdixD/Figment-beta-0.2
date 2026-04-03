@@ -33,20 +33,27 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
+    const updateThemeColor = (isDark: boolean) => {
+      let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (metaThemeColor) {
+        metaThemeColor.setAttribute('content', isDark ? '#1C1C1E' : '#FFFFFF');
+      }
+    };
+
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-        .matches
-        ? 'dark'
-        : 'light';
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const systemTheme = isDark ? 'dark' : 'light';
 
       root.classList.add(systemTheme);
+      updateThemeColor(isDark);
       
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = (e: MediaQueryListEvent) => {
         root.classList.remove('light', 'dark');
         root.classList.add(e.matches ? 'dark' : 'light');
+        updateThemeColor(e.matches);
       };
       
       mediaQuery.addEventListener('change', handleChange);
@@ -54,6 +61,7 @@ export function ThemeProvider({
     }
 
     root.classList.add(theme);
+    updateThemeColor(theme === 'dark');
   }, [theme]);
 
   const value = {

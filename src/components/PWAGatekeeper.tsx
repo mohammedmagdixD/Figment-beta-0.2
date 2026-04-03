@@ -30,16 +30,27 @@ export function PWAGatekeeper({ children }: PWAGatekeeperProps) {
     
     setIsStandalone(isStandaloneMode);
 
+    // Check if prompt was already captured
+    if ((window as any).deferredPrompt) {
+      setDeferredPrompt((window as any).deferredPrompt);
+    }
+
     // Listen for beforeinstallprompt on Android
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
 
+    const handleCustomPrompt = (e: any) => {
+      setDeferredPrompt(e.detail);
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('pwa-prompt-ready', handleCustomPrompt);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('pwa-prompt-ready', handleCustomPrompt);
     };
   }, []);
 
@@ -57,8 +68,8 @@ export function PWAGatekeeper({ children }: PWAGatekeeperProps) {
   // Don't render anything until we've checked the environment
   if (!isMounted) return null;
 
-  // If desktop or already installed, show the app
-  if (!isMobile || isStandalone) {
+  // If already installed, show the app
+  if (isStandalone) {
     return <>{children}</>;
   }
 
@@ -98,6 +109,15 @@ export function PWAGatekeeper({ children }: PWAGatekeeperProps) {
             >
               Install Figment
             </button>
+            {!deferredPrompt && (
+              <div className="text-xs text-red-500 mt-4 text-left bg-red-500/10 p-3 rounded-lg">
+                <p className="font-bold mb-1">Debug Info:</p>
+                <p>• beforeinstallprompt hasn't fired.</p>
+                <p>• Check if you are in Incognito mode (install is blocked).</p>
+                <p>• Check if the app is already installed.</p>
+                <p>• Ensure manifest and icons are valid.</p>
+              </div>
+            )}
           </div>
         )}
       </motion.div>
