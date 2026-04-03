@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Play, Star, ExternalLink, Headphones, BookOpen, Calendar, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { UniversalMediaData } from '../types/universal';
 import { useState, useRef, useEffect } from 'react';
@@ -6,6 +6,9 @@ import { MediaCard } from './MediaCard';
 import { MediaDetailsModal } from './MediaDetailsModal';
 import { SpotifyIcon, AppleMusicIcon, YouTubeMusicIcon, TidalIcon, DeezerIcon, SoundCloudIcon } from './StreamingIcons';
 import { fetchRelatedMedia } from '../services/api';
+import { useLongPress } from '../hooks/useLongPress';
+import { getCopyTextForMedia } from '../utils/mediaFormatters';
+import { haptics } from '../utils/haptics';
 
 interface UniversalDetailCardProps {
   data: UniversalMediaData;
@@ -18,7 +21,24 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
   const [relatedLists, setRelatedLists] = useState<{ listTitle: string; items: UniversalMediaData[] }[]>(data.relatedLists || []);
   const [isLoadingRelated, setIsLoadingRelated] = useState(false);
   const [streamingLinks, setStreamingLinks] = useState<any | null>(data.streamingLinks || null);
+  const [showCopyToast, setShowCopyToast] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const longPressProps = useLongPress({
+    onLongPress: async () => {
+      try {
+        const textToCopy = getCopyTextForMedia(data);
+        await navigator.clipboard.writeText(textToCopy);
+        haptics.success();
+        setShowCopyToast(true);
+        setTimeout(() => setShowCopyToast(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy text: ', err);
+        haptics.error();
+      }
+    },
+    delay: 500
+  });
 
   useEffect(() => {
     setStreamingLinks(data.streamingLinks || null);
@@ -134,7 +154,11 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
         )}
 
         <div className="mb-4">
-          <h2 className="font-sans text-2xl font-bold leading-tight text-[var(--label)] mb-1">
+          <h2 
+            className="font-sans text-2xl font-bold leading-tight text-[var(--label)] mb-1 select-none"
+            style={{ WebkitTouchCallout: 'none' }}
+            {...longPressProps}
+          >
             {data.header.title}
           </h2>
           {data.header.subtitle && (
@@ -342,6 +366,22 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
           onClose={() => setSelectedItem(null)}
         />
       )}
+
+      <AnimatePresence>
+        {showCopyToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            className="fixed bottom-12 left-0 right-0 z-[100] pointer-events-none flex justify-center"
+          >
+            <div className="bg-[var(--secondary-system-background)]/90 backdrop-blur-xl border border-[var(--separator)] text-[var(--label)] px-4 py-2 rounded-full shadow-lg font-medium text-sm">
+              Copied to clipboard
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

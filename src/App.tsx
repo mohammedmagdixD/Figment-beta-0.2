@@ -10,10 +10,12 @@ import { MediaScroller } from './components/MediaScroller';
 import { RichBlocks } from './components/RichBlocks';
 import { AddMediaModal } from './components/AddMediaModal';
 import { RecommendationModal } from './components/RecommendationModal';
+import { AuthScreen } from './components/AuthScreen';
 import { DiaryView, DiaryEntry } from './components/DiaryView';
-import { Reorder, useDragControls } from 'motion/react';
+import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
 import { AlertTriangle } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
 
 import { BottomTabBar } from './components/BottomTabBar';
 
@@ -90,9 +92,11 @@ function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAl
 }
 
 export default function App() {
+  const { user, isLoading } = useAuth();
   const [sections, setSections] = useState(profileData.sections);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<{ id: string, type: MediaType, title: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'diary'>('profile');
   const [diary, setDiary] = useState<DiaryEntry[]>(diaryData as DiaryEntry[]);
@@ -176,7 +180,11 @@ export default function App() {
     // In a real app, this would send data to a backend
   };
 
-    return (
+  if (isLoading) {
+    return null;
+  }
+
+  return (
     <ErrorBoundary>
       <div className="min-h-[100dvh] bg-light dark:bg-[var(--secondary-system-background)] sm:bg-[#E5E5E5] sm:dark:bg-[var(--secondary-system-background)] text-[var(--label)] font-sans sm:pb-12 selection:bg-quiet-sky dark:selection:bg-ios-blue/30">
         <div className="max-w-[428px] mx-auto bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] h-[100dvh] sm:h-[850px] shadow-sm sm:rounded-[40px] sm:my-8 sm:overflow-hidden sm:border-[8px] sm:border-ink-black dark:sm:border-[#2C2C2E] relative flex flex-col">
@@ -184,7 +192,7 @@ export default function App() {
           <div className="hidden sm:block h-6 w-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] shrink-0" />
           
           <div className="flex-1 overflow-y-auto hide-scrollbar scroll-container pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
-            <Header profile={profileData} onRecommendClick={() => setIsRecommendModalOpen(true)} />
+            <Header profile={profileData} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
             
             <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
             
@@ -273,6 +281,12 @@ export default function App() {
           onClose={() => setIsRecommendModalOpen(false)}
           onSubmit={handleRecommendSubmit}
         />
+
+        <AnimatePresence>
+          {(!user || isAuthModalOpen) && (
+            <AuthScreen />
+          )}
+        </AnimatePresence>
       </div>
     </ErrorBoundary>
   );
