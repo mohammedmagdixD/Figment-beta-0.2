@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useAnimation, PanInfo, useDragControls } from 'motion/react';
-import { Star, Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { SearchResult, getPodcastEpisodes, PodcastEpisode, getMovieDetails, getTvDetails, MovieDetails, getAnimeDetails, getMangaDetails, AnimeDetails, MangaDetails, getBookDetails, getAudioDetails } from '../services/api';
-import { IOSDatePicker } from './IOSDatePicker';
+import { RatingModule } from './RatingModule';
 import { haptics } from '../utils/haptics';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { UniversalDetailCard } from './UniversalDetailCard';
@@ -21,7 +21,7 @@ import { UniversalMediaData } from '../types/universal';
 interface MediaDetailsModalProps {
   item: SearchResult & { rating?: number; dateAdded?: string; type?: string } | null;
   onClose: () => void;
-  onLogEpisode?: (episode: PodcastEpisode, rating: number, date: string) => void;
+  onLogEpisode?: (episode: PodcastEpisode, rating: number, date: string, liked: boolean, rewatched: boolean) => void;
 }
 
 export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsModalProps) {
@@ -33,6 +33,8 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
   
   const [loggingEpisode, setLoggingEpisode] = useState<PodcastEpisode | null>(null);
   const [rating, setRating] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [rewatched, setRewatched] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [sheetState, setSheetState] = useState<'half' | 'full'>('half');
@@ -97,7 +99,7 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
 
   const handleLogEpisode = () => {
     haptics.success();
-    onLogEpisode?.(loggingEpisode!, rating, date);
+    onLogEpisode?.(loggingEpisode!, rating, date, liked, rewatched);
     setLoggingEpisode(null);
     onClose();
   };
@@ -149,31 +151,17 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
             <p className="font-sans text-sm text-[var(--secondary-label)] line-clamp-2">{item.title}</p>
           </div>
 
-          <div className="mb-8 px-1">
-            <label className="block text-sm font-medium text-[var(--label)] mb-3">Rating</label>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <motion.button 
-                  key={star} 
-                  whileTap={{ scale: 0.8 }}
-                  transition={{ type: "spring", stiffness: 600, damping: 35 }}
-                  onClick={() => {
-                    haptics.light();
-                    setRating(star);
-                  }} 
-                  className="focus:outline-none transition-transform"
-                >
-                  <Star className={`w-8 h-8 ${rating >= star ? 'fill-[var(--label)] text-[var(--label)]' : 'text-[var(--separator)] fill-transparent'}`} />
-                </motion.button>
-              ))}
-            </div>
-          </div>
-
           <div className="mb-auto px-1">
-            <label className="block text-sm font-medium text-[var(--label)] mb-3">Date</label>
-            <IOSDatePicker 
-              value={date} 
-              onChange={setDate}
+            <RatingModule
+              rating={rating}
+              onRatingChange={setRating}
+              liked={liked}
+              onLikedChange={setLiked}
+              date={date}
+              onDateChange={setDate}
+              showRewatch={item.type === 'movie' || item.type === 'tv' || item.type === 'anime'}
+              rewatched={rewatched}
+              onRewatchedChange={setRewatched}
             />
           </div>
 

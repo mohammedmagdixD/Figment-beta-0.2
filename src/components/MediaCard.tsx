@@ -53,7 +53,7 @@ export function MediaCard({
           <div className="absolute inset-0 rounded-full border-[12px] border-ink-black/90 dark:border-white/10 pointer-events-none z-10 shadow-inner" />
         )}
         <img 
-          src={item.image || item.images?.posterUrl} 
+          src={(item.image || item.images?.posterUrl) || undefined} 
           alt={item.title || item.header?.title}
           className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`}
           referrerPolicy="no-referrer"

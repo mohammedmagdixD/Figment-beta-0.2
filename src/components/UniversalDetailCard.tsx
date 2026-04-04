@@ -80,7 +80,7 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
       <div className="relative w-full aspect-[16/9] bg-black shrink-0">
         <div className="absolute inset-0 overflow-hidden">
           <img 
-            src={data.images.backdropUrl || data.images.posterUrl} 
+            src={(data.images.backdropUrl || data.images.posterUrl) || undefined} 
             alt={data.header.title} 
             className={`w-full h-full object-cover ${data.images.backdropFallback ? 'opacity-80 blur-[40px] scale-125' : 'opacity-90'}`}
             referrerPolicy="no-referrer"
@@ -118,7 +118,7 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
         <div className="absolute -bottom-16 left-6 flex items-end gap-4">
           <div className={`w-28 ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'aspect-square' : 'aspect-[2/3]'} rounded-xl overflow-hidden shadow-xl border-2 border-[var(--system-background)] shrink-0 bg-[var(--secondary-system-background)]`}>
             <img 
-              src={data.images.posterUrl} 
+              src={data.images.posterUrl || undefined} 
               alt={data.header.title} 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
@@ -135,8 +135,16 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
               <div>
                 <div className="text-xs font-medium text-[var(--secondary-label)] uppercase tracking-wider mb-1.5">Your Rating</div>
                 <div className="flex items-center gap-1 text-[var(--label)]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className={`w-4 h-4 ${i < data.userStats!.rating! ? 'fill-current' : 'text-[var(--separator)] fill-transparent'}`} />
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <div key={star} className="relative w-4 h-4">
+                      <Star className="absolute inset-0 w-4 h-4 text-[var(--separator)] fill-transparent" />
+                      <div 
+                        className="absolute inset-0 overflow-hidden" 
+                        style={{ width: data.userStats!.rating! >= star ? '100%' : data.userStats!.rating! >= star - 0.5 ? '50%' : '0%' }}
+                      >
+                        <Star className="w-4 h-4 text-[var(--label)] fill-[var(--label)] max-w-none" />
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -237,7 +245,7 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
             <div className="flex flex-wrap gap-3">
               {data.scrollableSections.watchProviders.map((provider: any, i: number) => (
                 <div key={i} className="w-[52px] h-[52px] rounded-[12px] overflow-hidden bg-[var(--secondary-system-background)] border border-[var(--separator)] flex items-center justify-center">
-                  <img src={`https://image.tmdb.org/t/p/original${provider.logo_path}`} alt={provider.provider_name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={provider.logo_path ? `https://image.tmdb.org/t/p/original${provider.logo_path}` : undefined} alt={provider.provider_name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
               ))}
             </div>
@@ -293,7 +301,7 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
                 <div key={i} className="flex flex-col items-center w-[88px] shrink-0 gap-2">
                   <div className="w-[72px] h-[72px] rounded-full overflow-hidden bg-[var(--secondary-system-background)] border border-[var(--separator)]">
                     {member.imageUrl ? (
-                      <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={member.imageUrl || undefined} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-2xl text-[var(--tertiary-label)]">
                         {member.name.charAt(0)}

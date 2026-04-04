@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MediaType } from '../services/api';
-import { Star } from 'lucide-react';
+import { Star, Heart, Repeat } from 'lucide-react';
 import { motion } from 'motion/react';
 import { haptics } from '../utils/haptics';
 
@@ -8,6 +8,8 @@ export interface DiaryEntry {
   id: string;
   date: string;
   rating: number;
+  liked?: boolean;
+  rewatched?: boolean;
   media: {
     id: string;
     title: string;
@@ -81,7 +83,7 @@ export function DiaryView({ entries }: { entries: DiaryEntry[] }) {
             </div>
 
             <div className="w-12 h-16 shrink-0 rounded-md overflow-hidden bg-[var(--secondary-system-background)] border border-[var(--separator)] shadow-sm">
-              <img src={entry.media.image} alt={entry.media.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={entry.media.image || undefined} alt={entry.media.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
 
             <div className="flex-1 min-w-0 pt-1">
@@ -92,10 +94,28 @@ export function DiaryView({ entries }: { entries: DiaryEntry[] }) {
                 {entry.media.subtitle}
               </p>
               {entry.rating > 0 && (
-                <div className="flex items-center gap-0.5 text-[var(--label)]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className={`w-3.5 h-3.5 ${i < entry.rating ? 'fill-current' : 'text-[var(--separator)] fill-transparent'}`} />
-                  ))}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5 text-[var(--label)]">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <div key={star} className="relative w-3.5 h-3.5">
+                        <Star className="absolute inset-0 w-3.5 h-3.5 text-[var(--separator)] fill-transparent" />
+                        <div 
+                          className="absolute inset-0 overflow-hidden" 
+                          style={{ width: entry.rating >= star ? '100%' : entry.rating >= star - 0.5 ? '50%' : '0%' }}
+                        >
+                          <Star className="w-3.5 h-3.5 text-[var(--label)] fill-[var(--label)] max-w-none" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {entry.liked && <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" />}
+                  {entry.rewatched && <Repeat className="w-3.5 h-3.5 text-[var(--ios-blue)]" />}
+                </div>
+              )}
+              {entry.rating === 0 && (entry.liked || entry.rewatched) && (
+                <div className="flex items-center gap-2 mt-1">
+                  {entry.liked && <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" />}
+                  {entry.rewatched && <Repeat className="w-3.5 h-3.5 text-[var(--ios-blue)]" />}
                 </div>
               )}
             </div>

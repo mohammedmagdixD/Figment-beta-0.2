@@ -53,7 +53,7 @@ export function UniversalListItem({
         )}
         {imageUrl ? (
           <>
-            <img src={imageUrl} alt={title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <img src={imageUrl || undefined} alt={title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             {actionButton && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors z-20">
                 {actionButton}

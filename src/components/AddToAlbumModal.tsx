@@ -155,7 +155,7 @@ export function AddToAlbumModal({ item, albums, onClose, onAddToAlbum, onCreateA
                     className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-light dark:hover:bg-[#2C2C2E] transition-colors text-left"
                   >
                     {album.coverImage ? (
-                      <img src={album.coverImage} alt={album.title} className="w-12 h-12 rounded-lg object-cover bg-light dark:bg-[#2C2C2E] border border-black/5 dark:border-white/10" />
+                      <img src={album.coverImage || undefined} alt={album.title} className="w-12 h-12 rounded-lg object-cover bg-light dark:bg-[#2C2C2E] border border-black/5 dark:border-white/10" />
                     ) : (
                       <div className="w-12 h-12 rounded-lg bg-light dark:bg-[#2C2C2E] border border-black/5 dark:border-white/10 flex items-center justify-center">
                         <ImageIcon className="w-5 h-5 text-gray dark:text-ios-gray-1" />

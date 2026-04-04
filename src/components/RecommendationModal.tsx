@@ -215,7 +215,7 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
                     className="w-full flex items-center gap-4 p-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-2xl transition-all duration-200 text-left group hover:scale-[1.02] active:scale-[0.98]"
                   >
                     <img
-                      src={result.image}
+                      src={result.image || undefined}
                       alt={result.title}
                       className="w-14 h-14 rounded-xl object-cover bg-black/5 dark:bg-white/5 shadow-sm"
                     />
@@ -232,11 +232,11 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
               {/* Selected Item Preview */}
               <div className="relative overflow-hidden rounded-3xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 group">
                 <div className="absolute inset-0 opacity-20 blur-2xl transition-opacity group-hover:opacity-30">
-                  <img src={selectedItem.image} alt="" className="w-full h-full object-cover" />
+                  <img src={selectedItem.image || undefined} alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="relative p-6 flex sm:flex-row flex-col items-center sm:items-start gap-6 text-center sm:text-left">
                   <img
-                    src={selectedItem.image}
+                    src={selectedItem.image || undefined}
                     alt={selectedItem.title}
                     className="w-28 h-28 rounded-2xl object-cover shadow-xl ring-1 ring-black/10 dark:ring-white/10"
                   />

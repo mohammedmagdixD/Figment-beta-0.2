@@ -111,7 +111,7 @@ export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) 
             className="relative cursor-pointer"
           >
             <img 
-              src={profile.avatar} 
+              src={profile.avatar || undefined} 
               alt={profile.name} 
               className="w-28 h-28 rounded-full object-cover"
               referrerPolicy="no-referrer"

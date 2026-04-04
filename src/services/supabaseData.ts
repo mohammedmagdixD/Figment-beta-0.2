@@ -101,3 +101,25 @@ export async function getUserDiary(userId: string) {
     throw error;
   }
 }
+
+export async function getRecommendations(userId: string) {
+  try {
+    // Scaffold for future recommendations table
+    const { data, error } = await supabase
+      .from('recommendations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      // If table doesn't exist yet, just return empty array
+      if (error.code === '42P01') return [];
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching recommendations:', error);
+    return []; // Return empty array as fallback for now
+  }
+}

@@ -10,7 +10,7 @@ interface MediaScrollerProps {
   section: any;
   dragControls?: any;
   onAddClick?: () => void;
-  onLogEpisode?: (episode: any, rating: number, date: string, podcast: any) => void;
+  onLogEpisode?: (episode: any, rating: number, date: string, liked: boolean, rewatched: boolean, podcast: any) => void;
   albums?: Album[];
   onAddToAlbum?: (albumId: string, item: any) => void;
   onCreateAlbum?: (title: string, description: string, coverImage: string, firstItem: any) => void;
@@ -102,7 +102,7 @@ export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode,
           <MediaDetailsModal 
             item={{...selectedItem, type: section.type}} 
             onClose={() => setSelectedItem(null)} 
-            onLogEpisode={(episode, rating, date) => onLogEpisode?.(episode, rating, date, selectedItem)}
+            onLogEpisode={(episode, rating, date, liked, rewatched) => onLogEpisode?.(episode, rating, date, liked, rewatched, selectedItem)}
           />
         )}
         {addingToAlbumItem && onAddToAlbum && onCreateAlbum && (

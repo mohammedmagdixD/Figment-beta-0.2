@@ -6,18 +6,19 @@
 import React, { useState, Component, ErrorInfo, ReactNode, useEffect } from 'react';
 import { Header } from './components/Header';
 import { MediaScroller } from './components/MediaScroller';
-import { RichBlocks } from './components/RichBlocks';
-import { AddMediaModal } from './components/AddMediaModal';
 import { RecommendationModal } from './components/RecommendationModal';
 import { AuthScreen } from './components/AuthScreen';
 import { DiaryView, DiaryEntry } from './components/DiaryView';
 import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, ListPlus } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { getUserProfile, getUserShelves, getUserDiary } from './services/supabaseData';
+import { FeedView } from './views/FeedView';
+import { RecommendationsView } from './views/RecommendationsView';
+import { AddView } from './views/AddView';
 
-import { BottomTabBar } from './components/BottomTabBar';
+import { BottomTabBar, TabType } from './components/BottomTabBar';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -97,16 +98,14 @@ export default function App() {
     name: 'Welcome',
     handle: '@guest',
     bio: 'Please sign in to view your profile.',
-    avatar: 'https://picsum.photos/seed/default/200/200',
-    socials: [],
-    blocks: []
+    avatar: '',
+    socials: []
   });
   const [sections, setSections] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<{ id: string, type: MediaType, title: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'profile' | 'diary'>('profile');
+  const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
@@ -122,20 +121,46 @@ export default function App() {
           getUserDiary(user.id)
         ]);
 
+        const getStandardShelfTitle = (type: string, originalTitle: string) => {
+          switch(type?.toLowerCase()) {
+            case 'movie': return 'Films';
+            case 'tv': return 'TV Shows';
+            case 'music': return 'Music';
+            case 'anime': return 'Anime';
+            case 'manga': return 'Manga';
+            case 'book': return 'Books';
+            case 'podcast': return 'Podcasts';
+            case 'webnovel': return 'Webnovels';
+            default: return originalTitle;
+          }
+        };
+
+        const getFallbackAvatar = (name: string) => {
+          const initial = (name || 'A').charAt(0).toUpperCase();
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3a3a3c"/><stop offset="100%" stop-color="#1c1c1e"/></linearGradient></defs><rect width="100" height="100" fill="url(#g)"/><text x="50" y="50" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="40" font-weight="500" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${initial}</text></svg>`;
+          return `data:image/svg+xml;base64,${btoa(svg)}`;
+        };
+
+        const profileName = userProfile.name || userProfile.full_name || 'Anonymous';
+
         setProfile({
-          name: userProfile.name || userProfile.full_name || 'Anonymous',
+          name: profileName,
           handle: userProfile.handle || userProfile.username ? `@${userProfile.username || userProfile.handle}` : '',
           bio: userProfile.bio || '',
-          avatar: userProfile.avatar_url || userProfile.avatar || 'https://picsum.photos/seed/default/200/200',
+          avatar: userProfile.avatar_url || userProfile.avatar || getFallbackAvatar(profileName),
           socials: userProfile.socials?.map((s: any) => ({
             platform: s.platform,
             url: s.url,
             icon: s.platform.toLowerCase()
-          })) || [],
-          blocks: userProfile.blocks || []
+          })) || []
         });
 
-        setSections(shelvesData);
+        const standardizedShelves = shelvesData.map((s: any) => ({
+          ...s,
+          title: getStandardShelfTitle(s.type, s.title)
+        }));
+
+        setSections(standardizedShelves);
         
         setDiary(userDiary.map((d: any) => ({
           id: d.id,
@@ -183,44 +208,48 @@ export default function App() {
 
   const handleAddClick = (section: any) => {
     setActiveSection({ id: section.id, type: section.type as MediaType, title: section.title });
-    setIsModalOpen(true);
+    setActiveTab('add');
   };
 
-  const handleAddItem = (item: SearchResult, details: { rating: number, date: string }) => {
-    if (!activeSection) return;
-    
-    // Add to profile section
-    setSections(prevSections => 
-      prevSections.map(section => {
-        if (section.id === activeSection.id) {
-          if (section.items.some((i: any) => i.id === item.id)) return section;
-          return {
-            ...section,
-            items: [{ ...item, rating: details.rating, dateAdded: details.date }, ...section.items]
-          };
-        }
-        return section;
-      })
-    );
+  const handleAddItem = (item: SearchResult, details: { rating: number, date: string, liked: boolean, rewatched: boolean }) => {
+    // Add to profile section if activeSection is set
+    if (activeSection) {
+      setSections(prevSections => 
+        prevSections.map(section => {
+          if (section.id === activeSection.id) {
+            if (section.items.some((i: any) => i.id === item.id)) return section;
+            return {
+              ...section,
+              items: [{ ...item, rating: details.rating, dateAdded: details.date, liked: details.liked, rewatched: details.rewatched }, ...section.items]
+            };
+          }
+          return section;
+        })
+      );
+    }
 
     // Add to diary
     const newDiaryEntry: DiaryEntry = {
       id: `d_${Date.now()}`,
       date: details.date,
       rating: details.rating,
+      liked: details.liked,
+      rewatched: details.rewatched,
       media: {
         ...item,
-        type: activeSection.type
+        type: item.type || (activeSection?.type as MediaType) || 'movie'
       }
     };
     setDiary(prev => [newDiaryEntry, ...prev]);
   };
 
-  const handleLogEpisode = (episode: any, rating: number, date: string, podcast: any) => {
+  const handleLogEpisode = (episode: any, rating: number, date: string, liked: boolean, rewatched: boolean, podcast: any) => {
     const newDiaryEntry: DiaryEntry = {
       id: `d_${Date.now()}`,
       date: date,
       rating: rating,
+      liked: liked,
+      rewatched: rewatched,
       media: {
         id: episode.id,
         title: episode.title,
@@ -254,14 +283,13 @@ export default function App() {
           <div className="hidden sm:block h-6 w-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] shrink-0" />
           
           <div className="flex-1 overflow-y-auto hide-scrollbar scroll-container pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
-            <Header profile={profile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
-            
-            <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
-            
-            {activeTab === 'profile' ? (
-              <main className="pb-12 space-y-2">
+            <main className={`pb-12 space-y-2 ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
+              <Header profile={profile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
+              <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
+              
+              {sections.filter(s => s.items && s.items.length > 0).length > 0 ? (
                 <Reorder.Group axis="y" values={sections} onReorder={setSections} className="space-y-2">
-                  {sections.map((section) => (
+                  {sections.filter(s => s.items && s.items.length > 0).map((section) => (
                     <DraggableSection 
                       key={section.id} 
                       section={section} 
@@ -273,70 +301,91 @@ export default function App() {
                     />
                   ))}
                 </Reorder.Group>
-
-                <section className="py-2 bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
-                  <div className="flex items-center justify-between px-4 mb-3">
-                    <h2 className="font-serif text-lg font-semibold leading-relaxed text-[var(--label)]">
-                      Albums
-                    </h2>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                  <div className="w-16 h-16 mb-4 rounded-full bg-[var(--secondary-system-background)] flex items-center justify-center">
+                    <ListPlus className="w-8 h-8 text-[var(--secondary-label)]" />
                   </div>
-                  {albums.length > 0 ? (
-                    <div className="horizontal-scroll-container hide-scrollbar snap-x snap-mandatory">
-                      {albums.map((album) => (
-                        <div key={album.id} className="snap-start card-container flex flex-col gap-2 cursor-pointer card-square">
-                          <div className="relative overflow-hidden rounded-xl bg-[var(--secondary-system-background)] shadow-sm border border-[var(--separator)] card-image">
-                            {album.coverImage ? (
-                              <img src={album.coverImage} alt={album.title} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-black/5 dark:bg-white/5">
-                                <span className="font-serif text-2xl text-[var(--secondary-label)]">{album.title.charAt(0)}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="w-full">
-                            <h3 className="font-sans text-base font-semibold leading-tight text-[var(--label)] card-text-truncate">
-                              {album.title}
-                            </h3>
-                            <p className="font-sans text-sm font-medium leading-relaxed text-[var(--secondary-label)] card-text-truncate mt-0.5">
-                              {album.tracks.length} {album.tracks.length === 1 ? 'track' : 'tracks'}
-                            </p>
-                          </div>
+                  <h3 className="font-serif text-xl font-semibold text-[var(--label)] mb-2">No shelves curated yet</h3>
+                  <p className="font-sans text-sm text-[var(--secondary-label)] max-w-[250px]">
+                    Start adding media to your shelves to build your profile.
+                  </p>
+                </div>
+              )}
+
+              <section className="py-2 bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
+                <div className="flex items-center justify-between px-4 mb-3">
+                  <h2 className="font-serif text-lg font-semibold leading-relaxed text-[var(--label)]">
+                    Albums
+                  </h2>
+                </div>
+                {albums.length > 0 ? (
+                  <div className="horizontal-scroll-container hide-scrollbar snap-x snap-mandatory">
+                    {albums.map((album) => (
+                      <div key={album.id} className="snap-start card-container flex flex-col gap-2 cursor-pointer card-square">
+                        <div className="relative overflow-hidden rounded-xl bg-[var(--secondary-system-background)] shadow-sm border border-[var(--separator)] card-image">
+                          {album.coverImage ? (
+                            <img src={album.coverImage || undefined} alt={album.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-black/5 dark:bg-white/5">
+                              <span className="font-serif text-2xl text-[var(--secondary-label)]">{album.title.charAt(0)}</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-8 text-center text-[var(--secondary-label)] text-sm font-sans">
-                      No albums created yet.
-                    </div>
-                  )}
-                </section>
-                
-                <div className="h-4" /> {/* Spacer */}
-                
-                <RichBlocks blocks={profile.blocks} />
-              </main>
-            ) : (
-              <main className="pb-12">
-                <DiaryView entries={diary} />
-              </main>
-            )}
+                        <div className="w-full">
+                          <h3 className="font-sans text-base font-semibold leading-tight text-[var(--label)] card-text-truncate">
+                            {album.title}
+                          </h3>
+                          <p className="font-sans text-sm font-medium leading-relaxed text-[var(--secondary-label)] card-text-truncate mt-0.5">
+                            {album.tracks.length} {album.tracks.length === 1 ? 'track' : 'tracks'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-8 text-center text-[var(--secondary-label)] text-sm font-sans">
+                    No albums created yet.
+                  </div>
+                )}
+              </section>
+              
+              <div className="h-4" /> {/* Spacer */}
+            </main>
+
+            <main className={`pb-12 ${activeTab === 'diary' ? 'block' : 'hidden'}`}>
+              <div className="px-4 pt-4 pb-2">
+                <h2 className="font-serif text-2xl font-semibold text-[var(--label)]">Diary</h2>
+              </div>
+              <DiaryView entries={diary} />
+            </main>
+
+            <main className={`pb-12 h-full flex flex-col ${activeTab === 'feed' ? 'flex' : 'hidden'}`}>
+              <FeedView />
+            </main>
+
+            <main className={`pb-12 h-full flex flex-col ${activeTab === 'recommendations' ? 'flex' : 'hidden'}`}>
+              <RecommendationsView />
+            </main>
+
+            <main className={`pb-12 h-full flex flex-col ${activeTab === 'add' ? 'flex' : 'hidden'}`}>
+              <AddView onAddItem={handleAddItem} initialType={activeSection?.type} />
+            </main>
           </div>
           
-          <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <BottomTabBar 
+            activeTab={activeTab} 
+            onTabChange={(tab) => {
+              if (tab === 'add' && activeTab !== 'add') {
+                setActiveSection(null);
+              }
+              setActiveTab(tab);
+            }} 
+          />
           
           {/* iOS Home Indicator (simulated for desktop view) */}
           <div className="hidden sm:block absolute bottom-2 left-1/2 -translate-x-1/2 w-1/3 h-1 bg-[var(--label)] rounded-full z-50" />
         </div>
-
-        {activeSection && (
-          <AddMediaModal
-            isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
-            sectionType={activeSection.type}
-            sectionTitle={activeSection.title}
-            onAdd={handleAddItem}
-          />
-        )}
 
         <RecommendationModal
           isOpen={isRecommendModalOpen}
