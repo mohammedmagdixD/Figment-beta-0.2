@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
-import { profileData, diaryData } from './data/mockData';
+import React, { useState, Component, ErrorInfo, ReactNode, useEffect } from 'react';
 import { Header } from './components/Header';
 import { MediaScroller } from './components/MediaScroller';
 import { RichBlocks } from './components/RichBlocks';
@@ -14,8 +13,9 @@ import { AuthScreen } from './components/AuthScreen';
 import { DiaryView, DiaryEntry } from './components/DiaryView';
 import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
+import { getUserProfile, getUserShelves, getUserDiary } from './services/supabaseData';
 
 import { BottomTabBar } from './components/BottomTabBar';
 
@@ -93,14 +93,72 @@ function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAl
 
 export default function App() {
   const { user, isLoading } = useAuth();
-  const [sections, setSections] = useState(profileData.sections);
+  const [profile, setProfile] = useState<any>({
+    name: 'Welcome',
+    handle: '@guest',
+    bio: 'Please sign in to view your profile.',
+    avatar: 'https://picsum.photos/seed/default/200/200',
+    socials: [],
+    blocks: []
+  });
+  const [sections, setSections] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<{ id: string, type: MediaType, title: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'diary'>('profile');
-  const [diary, setDiary] = useState<DiaryEntry[]>(diaryData as DiaryEntry[]);
+  const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      if (!user) return;
+      try {
+        setIsDataLoading(true);
+        const [userProfile, shelvesData, userDiary] = await Promise.all([
+          getUserProfile(user.id),
+          getUserShelves(user.id),
+          getUserDiary(user.id)
+        ]);
+
+        setProfile({
+          name: userProfile.name || userProfile.full_name || 'Anonymous',
+          handle: userProfile.handle || userProfile.username ? `@${userProfile.username || userProfile.handle}` : '',
+          bio: userProfile.bio || '',
+          avatar: userProfile.avatar_url || userProfile.avatar || 'https://picsum.photos/seed/default/200/200',
+          socials: userProfile.socials?.map((s: any) => ({
+            platform: s.platform,
+            url: s.url,
+            icon: s.platform.toLowerCase()
+          })) || [],
+          blocks: userProfile.blocks || []
+        });
+
+        setSections(shelvesData);
+        
+        setDiary(userDiary.map((d: any) => ({
+          id: d.id,
+          date: d.logged_date,
+          rating: d.rating,
+          media: {
+            id: d.media_items.id,
+            title: d.media_items.title,
+            subtitle: d.media_items.subtitle,
+            image: d.media_items.poster_url || d.media_items.backdrop_url,
+            type: d.media_items.media_type
+          }
+        })));
+
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setIsDataLoading(false);
+      }
+    }
+
+    loadData();
+  }, [user]);
 
   const handleCreateAlbum = (title: string, description: string, coverImage: string, firstItem: any) => {
     const newAlbum: Album = {
@@ -180,8 +238,12 @@ export default function App() {
     // In a real app, this would send data to a backend
   };
 
-  if (isLoading) {
-    return null;
+  if (isLoading || isDataLoading) {
+    return (
+      <div className="min-h-[100dvh] bg-light dark:bg-[var(--secondary-system-background)] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[var(--secondary-label)] animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -192,7 +254,7 @@ export default function App() {
           <div className="hidden sm:block h-6 w-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] shrink-0" />
           
           <div className="flex-1 overflow-y-auto hide-scrollbar scroll-container pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
-            <Header profile={profileData} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
+            <Header profile={profile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
             
             <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
             
@@ -251,7 +313,7 @@ export default function App() {
                 
                 <div className="h-4" /> {/* Spacer */}
                 
-                <RichBlocks blocks={profileData.blocks} />
+                <RichBlocks blocks={profile.blocks} />
               </main>
             ) : (
               <main className="pb-12">
