@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Play, Pause, ListPlus } from 'lucide-react';
 import { UniversalMediaData } from '../types/universal';
@@ -7,6 +8,7 @@ interface MediaCardProps {
   sectionType: string;
   index: number;
   playingId: string | null;
+  isPriority?: boolean;
   onItemClick: (item: any) => void;
   onPlayToggle: (url: string, id: string) => void;
   onAddToAlbum?: (item: any) => void;
@@ -17,10 +19,13 @@ export function MediaCard({
   sectionType,
   index,
   playingId,
+  isPriority = false,
   onItemClick,
   onPlayToggle,
   onAddToAlbum
 }: MediaCardProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
   const getAspectRatioClass = (type: string) => {
     switch (type) {
       case 'movies':
@@ -40,6 +45,21 @@ export function MediaCard({
     }
   };
 
+  const getImageUrl = (item: any) => {
+    if (!item) return undefined;
+    if (item.image) return item.image;
+    if (item.images?.posterUrl) return item.images.posterUrl;
+    if (item.images?.[0]?.url) return item.images[0].url;
+    if (item.poster_url) return item.poster_url;
+    if (item.poster_path) return `https://image.tmdb.org/t/p/w500${item.poster_path}`;
+    if (item.main_picture?.large) return item.main_picture.large;
+    if (item.main_picture?.medium) return item.main_picture.medium;
+    if (item.volumeInfo?.imageLinks?.thumbnail) return item.volumeInfo.imageLinks.thumbnail;
+    return undefined;
+  };
+
+  const imageUrl = getImageUrl(item);
+
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
@@ -52,12 +72,33 @@ export function MediaCard({
         {(sectionType === 'music' || sectionType === 'song') && (
           <div className="absolute inset-0 rounded-full border-[12px] border-ink-black/90 dark:border-white/10 pointer-events-none z-10 shadow-inner" />
         )}
-        <img 
-          src={(item.image || item.images?.posterUrl) || undefined} 
-          alt={item.title || item.header?.title}
-          className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`}
-          referrerPolicy="no-referrer"
-        />
+        
+        {/* Skeleton Placeholder */}
+        {(!isLoaded && imageUrl) && (
+          <div className={`absolute inset-0 bg-[var(--secondary-system-background)] animate-pulse ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`} />
+        )}
+
+        {/* Image */}
+        {imageUrl ? (
+          <motion.img 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isLoaded ? 1 : 0 }}
+            src={imageUrl} 
+            alt={item.title || item.header?.title}
+            loading={isPriority ? "eager" : "lazy"}
+            onLoad={() => setIsLoaded(true)}
+            onError={() => setIsLoaded(true)}
+            className={`absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`}
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--secondary-system-background)] p-4 text-center">
+            <span className="text-xs font-medium text-[var(--secondary-label)] line-clamp-3">
+              {item.title || item.header?.title || 'No Image'}
+            </span>
+          </div>
+        )}
+        
         {/* Subtle inner shadow for depth */}
         <div className={`absolute inset-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] pointer-events-none ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : 'rounded-xl'}`} />
         {/* Hover overlay */}

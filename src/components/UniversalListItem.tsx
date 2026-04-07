@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { Play, Pause, Music, Film, Tv, BookOpen } from 'lucide-react';
 
 interface UniversalListItemProps {
@@ -22,6 +23,7 @@ export function UniversalListItem({
   actionButton,
   rightContent
 }: UniversalListItemProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
   
   const renderIcon = () => {
     switch (icon) {
@@ -53,7 +55,22 @@ export function UniversalListItem({
         )}
         {imageUrl ? (
           <>
-            <img src={imageUrl || undefined} alt={title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            {/* Skeleton Placeholder */}
+            {!isLoaded && (
+              <div className="absolute inset-0 bg-[var(--secondary-system-background)] animate-pulse" />
+            )}
+            
+            <motion.img 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isLoaded ? 1 : 0 }}
+              src={imageUrl || undefined} 
+              alt={title} 
+              loading="lazy"
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setIsLoaded(true)}
+              className="absolute inset-0 w-full h-full object-cover" 
+              referrerPolicy="no-referrer" 
+            />
             {actionButton && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors z-20">
                 {actionButton}

@@ -9,6 +9,7 @@ import { Album } from '../services/api';
 interface MediaScrollerProps {
   section: any;
   dragControls?: any;
+  isFirstSection?: boolean;
   onAddClick?: () => void;
   onLogEpisode?: (episode: any, rating: number, date: string, liked: boolean, rewatched: boolean, podcast: any) => void;
   albums?: Album[];
@@ -16,7 +17,7 @@ interface MediaScrollerProps {
   onCreateAlbum?: (title: string, description: string, coverImage: string, firstItem: any) => void;
 }
 
-export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode, albums = [], onAddToAlbum, onCreateAlbum }: MediaScrollerProps) {
+export function MediaScroller({ section, dragControls, isFirstSection = false, onAddClick, onLogEpisode, albums = [], onAddToAlbum, onCreateAlbum }: MediaScrollerProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [addingToAlbumItem, setAddingToAlbumItem] = useState<any | null>(null);
@@ -92,6 +93,7 @@ export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode,
             sectionType={section.type}
             index={index}
             playingId={playingId}
+            isPriority={isFirstSection && index < 4}
             onItemClick={setSelectedItem}
             onPlayToggle={togglePlay}
             onAddToAlbum={(section.type === 'music' && onAddToAlbum) ? setAddingToAlbumItem : undefined}

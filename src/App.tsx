@@ -72,7 +72,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAlbum, onCreateAlbum }: { section: any, onAddClick?: () => void, onLogEpisode?: any, albums?: Album[], onAddToAlbum?: any, onCreateAlbum?: any }) {
+function DraggableSection({ section, isFirstSection, onAddClick, onLogEpisode, albums, onAddToAlbum, onCreateAlbum }: { section: any, isFirstSection?: boolean, onAddClick?: () => void, onLogEpisode?: any, albums?: Album[], onAddToAlbum?: any, onCreateAlbum?: any }) {
   const controls = useDragControls();
   return (
     <Reorder.Item 
@@ -84,6 +84,7 @@ function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAl
       <MediaScroller 
         section={section} 
         dragControls={controls} 
+        isFirstSection={isFirstSection}
         onAddClick={onAddClick} 
         onLogEpisode={onLogEpisode}
         albums={albums}
