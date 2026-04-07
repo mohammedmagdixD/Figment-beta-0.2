@@ -13,7 +13,7 @@ import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
 import { AlertTriangle, Loader2, ListPlus } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
-import { getUserProfile, logMediaItem, addSectionItem, syncMediaToShelf } from './services/supabaseData';
+import { getUserProfile, logMediaItem, addSectionItem, syncMediaToShelf, getUserByHandle } from './services/supabaseData';
 import { useDiary } from './hooks/useDiary';
 import { useShelves } from './hooks/useShelves';
 import { FeedView } from './views/FeedView';
@@ -103,21 +103,50 @@ export default function App() {
     avatar: '',
     socials: []
   });
-  const { diary, isLoading: isDiaryLoading, refetch: refetchDiary } = useDiary(user?.id);
-  const { shelves: sections, setShelves: setSections, isLoading: isShelvesLoading, refetch: refetchShelves } = useShelves(user?.id);
+  
+  const [viewingUserId, setViewingUserId] = useState<string | undefined>(user?.id);
+  const { diary, isLoading: isDiaryLoading, refetch: refetchDiary } = useDiary(viewingUserId);
+  const { shelves: sections, setShelves: setSections, isLoading: isShelvesLoading, refetch: refetchShelves } = useShelves(viewingUserId);
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<{ id: string, type: MediaType, title: string } | null>(null);
+  
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
   useEffect(() => {
-    async function loadData() {
-      if (!user) return;
+    async function loadData(path: string) {
       try {
         setIsDataLoading(true);
-        const userProfile = await getUserProfile(user.id);
+        let targetUserId = user?.id;
+        
+        const handleMatch = path.match(/^\/@([\w.-]+)/);
+        
+        if (handleMatch) {
+          const handle = handleMatch[1];
+          const foundUser = await getUserByHandle(handle);
+          if (foundUser) {
+            targetUserId = foundUser.id;
+            setActiveTab('profile');
+          } else {
+            console.error('User not found for handle:', handle);
+          }
+        } else {
+          const tabMatch = path.match(/^\/(feed|diary|add)/);
+          if (tabMatch) {
+            setActiveTab(tabMatch[1] as TabType);
+          }
+        }
+
+        setViewingUserId(targetUserId);
+
+        if (!targetUserId) {
+          setIsDataLoading(false);
+          return;
+        }
+
+        const userProfile = await getUserProfile(targetUserId);
 
         const getFallbackAvatar = (name: string) => {
           const initial = (name || 'A').charAt(0).toUpperCase();
@@ -146,7 +175,14 @@ export default function App() {
       }
     }
 
-    loadData();
+    loadData(window.location.pathname);
+
+    const handlePopState = () => {
+      loadData(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, [user]);
 
   const handleCreateAlbum = (title: string, description: string, coverImage: string, firstItem: any) => {
@@ -173,6 +209,7 @@ export default function App() {
   const handleAddClick = (section: any) => {
     setActiveSection({ id: section.id, type: section.type as MediaType, title: section.title });
     setActiveTab('add');
+    window.history.pushState({}, '', '/add');
   };
 
   const handleAddItem = async (item: SearchResult, details: { rating: number, date: string, liked: boolean, rewatched: boolean }) => {
@@ -355,6 +392,12 @@ export default function App() {
                 setActiveSection(null);
               }
               setActiveTab(tab);
+              
+              let newPath = `/${tab}`;
+              if (tab === 'profile') {
+                newPath = profile.handle ? `/@${profile.handle.replace('@', '')}` : '/profile';
+              }
+              window.history.pushState({}, '', newPath);
             }} 
           />
           
@@ -369,7 +412,7 @@ export default function App() {
         />
 
         <AnimatePresence>
-          {(!user || isAuthModalOpen) && (
+          {((!user && !viewingUserId) || isAuthModalOpen) && (
             <AuthScreen />
           )}
         </AnimatePresence>

@@ -1,6 +1,29 @@
 import { supabase } from './supabase';
 import { UniversalMediaData } from '../types/universal';
 
+export async function getUserByHandle(handle: string) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('handle', handle)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Not found
+        return null;
+      }
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching user by handle:', error);
+    throw error;
+  }
+}
+
 export async function getUserProfile(userId: string) {
   try {
     const [userResponse, socialsResponse] = await Promise.all([

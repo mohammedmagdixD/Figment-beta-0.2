@@ -35,7 +35,7 @@ export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) 
 
   const handleShare = async () => {
     haptics.light();
-    const shareUrl = `${window.location.origin}/${profile.handle.replace('@', '')}`;
+    const shareUrl = `${window.location.origin}/@${profile.handle.replace('@', '')}`;
     const shareData = {
       title: `${profile.name}'s Profile`,
       text: `Check out ${profile.name}'s recommendations!`,
@@ -45,8 +45,10 @@ export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) 
     if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
       try {
         await navigator.share(shareData);
-      } catch (err) {
-        console.error('Error sharing:', err);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Error sharing:', err);
+        }
       }
     } else {
       try {
