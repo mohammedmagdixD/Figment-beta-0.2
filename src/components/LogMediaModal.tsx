@@ -50,7 +50,7 @@ export function LogMediaModal({ isOpen, onClose, item, onSave }: LogMediaModalPr
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
             onClick={onClose}
             onTouchMove={(e) => e.preventDefault()}
             onWheel={(e) => e.preventDefault()}
@@ -71,7 +71,7 @@ export function LogMediaModal({ isOpen, onClose, item, onSave }: LogMediaModalPr
             onClick={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
-            className="fixed inset-x-0 bottom-0 z-50 bg-[var(--system-background)] rounded-t-3xl shadow-2xl h-[85vh] flex flex-col sm:max-w-[428px] sm:mx-auto pb-[env(safe-area-inset-bottom)]"
+            className="fixed inset-x-0 bottom-0 z-[60] bg-[var(--system-background)] rounded-t-3xl shadow-2xl h-[85vh] flex flex-col sm:max-w-[428px] sm:mx-auto pb-[env(safe-area-inset-bottom)]"
           >
             <div className="w-full flex justify-center pt-3 pb-1 shrink-0">
               <div className="w-10 h-1 bg-[var(--separator)] rounded-full" />

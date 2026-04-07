@@ -45,11 +45,11 @@ export function tmdbSearchAdapter(data: TMDBSearchResponse, type: 'movie' | 'tv'
     const title = 'title' in item ? item.title : item.name;
     const releaseDate = 'release_date' in item ? item.release_date : item.first_air_date;
     return {
-      id: item.id.toString(),
-      title: title,
+      id: item.id?.toString() || '',
+      title: title || 'Unknown',
       subtitle: releaseDate ? releaseDate.split('-')[0] : (isMovie ? 'Movie' : 'TV Show'),
       image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
-      url: `https://www.themoviedb.org/${type}/${item.id}`,
+      url: `https://www.themoviedb.org/${type}/${item.id || ''}`,
       description: item.overview
     };
   });
@@ -96,8 +96,8 @@ export function googleBooksSearchAdapter(data: GoogleBooksResponse, query: strin
   return items.map((item: GoogleBooksVolume) => {
     const info = item.volumeInfo;
     return {
-      id: item.id,
-      title: info.title,
+      id: item.id || '',
+      title: info.title || 'Unknown',
       subtitle: info.authors ? info.authors.join(', ') : 'Unknown Author',
       image: getHighResBookCover(info.imageLinks?.thumbnail),
       url: (info as any).infoLink,
@@ -108,41 +108,41 @@ export function googleBooksSearchAdapter(data: GoogleBooksResponse, query: strin
 
 export function openLibrarySearchAdapter(data: OpenLibrarySearchResponse): SearchResult[] {
   return (data.docs || []).map((item: OpenLibraryDoc) => ({
-    id: item.key.replace('/works/', ''),
-    title: item.title,
+    id: item.key?.replace('/works/', '') || '',
+    title: item.title || 'Unknown',
     subtitle: item.author_name ? item.author_name.join(', ') : 'Unknown Author',
     image: item.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg` : 'https://placehold.co/300x400/1a1a1a/ffffff?text=No+Cover',
-    url: `https://openlibrary.org${item.key}`,
+    url: item.key ? `https://openlibrary.org${item.key}` : undefined,
     description: (item as any).first_sentence ? (typeof (item as any).first_sentence === 'string' ? (item as any).first_sentence : (item as any).first_sentence[0]) : ''
   }));
 }
 
 export function malSearchAdapter(data: MALSearchResponse, type: 'anime' | 'manga'): SearchResult[] {
   return (data.data || []).map((item: MALAnime | MALManga) => ({
-    id: item.node.id.toString(),
-    title: item.node.title,
-    subtitle: (item.node as any).start_season ? (item.node as any).start_season.year.toString() : item.node.media_type,
-    image: item.node.main_picture?.large || item.node.main_picture?.medium || 'https://placehold.co/300x400/1a1a1a/ffffff?text=No+Cover',
-    url: `https://myanimelist.net/${type}/${item.node.id}`,
-    description: (item.node as any).synopsis || ''
+    id: item.node?.id?.toString() || '',
+    title: item.node?.title || 'Unknown',
+    subtitle: (item.node as any)?.start_season ? (item.node as any).start_season.year.toString() : item.node?.media_type || '',
+    image: item.node?.main_picture?.large || item.node?.main_picture?.medium || 'https://placehold.co/300x400/1a1a1a/ffffff?text=No+Cover',
+    url: `https://myanimelist.net/${type}/${item.node?.id || ''}`,
+    description: (item.node as any)?.synopsis || ''
   }));
 }
 
 export function itunesSearchAdapter(data: ITunesSearchResponse, type: 'podcast' | 'music'): SearchResult[] {
   if (type === 'podcast') {
     return (data.results || []).map((item: ITunesTrack | ITunesPodcast) => ({
-      id: item.collectionId?.toString(),
+      id: item.collectionId?.toString() || '',
       title: item.collectionName || '',
-      subtitle: item.artistName,
+      subtitle: item.artistName || '',
       image: item.artworkUrl600 || item.artworkUrl100?.replace('100x100bb', '600x600bb') || 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
       url: (item as any).collectionViewUrl,
       description: item.collectionName
     }));
   } else {
     return (data.results || []).map((item: ITunesTrack | ITunesPodcast) => ({
-      id: ('trackId' in item ? item.trackId : item.collectionId).toString(),
+      id: ('trackId' in item ? item.trackId : item.collectionId)?.toString() || '',
       title: 'trackName' in item ? item.trackName : item.collectionName || '',
-      subtitle: item.artistName,
+      subtitle: item.artistName || '',
       image: item.artworkUrl100?.replace('100x100bb', '600x600bb') || 'https://placehold.co/600x600/1a1a1a/ffffff?text=No+Cover',
       url: (item as any).trackViewUrl,
       previewUrl: 'previewUrl' in item ? item.previewUrl : undefined,
@@ -219,15 +219,15 @@ export function malAnimeAdapter(data: AnimeDetails): UniversalMediaData {
     relatedLists.push({
       listTitle: 'Related Anime',
       items: data.related_anime.map((item: any) => ({
-        id: item.node.id.toString(),
+        id: item.node?.id?.toString() || '',
         mediaType: 'anime',
         images: {
-          backdropUrl: item.node.main_picture?.large || item.node.main_picture?.medium || null,
-          posterUrl: item.node.main_picture?.large || item.node.main_picture?.medium || '',
+          backdropUrl: item.node?.main_picture?.large || item.node?.main_picture?.medium || null,
+          posterUrl: item.node?.main_picture?.large || item.node?.main_picture?.medium || '',
           backdropFallback: true
         },
         header: {
-          title: item.node.title,
+          title: item.node?.title || 'Unknown',
           subtitle: item.relation_type_formatted || 'Related'
         },
         stats: [],
@@ -242,15 +242,15 @@ export function malAnimeAdapter(data: AnimeDetails): UniversalMediaData {
     relatedLists.push({
       listTitle: 'Recommendations',
       items: data.recommendations.map((item: any) => ({
-        id: item.node.id.toString(),
+        id: item.node?.id?.toString() || '',
         mediaType: 'anime',
         images: {
-          backdropUrl: item.node.main_picture?.large || item.node.main_picture?.medium || null,
-          posterUrl: item.node.main_picture?.large || item.node.main_picture?.medium || '',
+          backdropUrl: item.node?.main_picture?.large || item.node?.main_picture?.medium || null,
+          posterUrl: item.node?.main_picture?.large || item.node?.main_picture?.medium || '',
           backdropFallback: true
         },
         header: {
-          title: item.node.title,
+          title: item.node?.title || 'Unknown',
           subtitle: item.num_recommendations ? `${item.num_recommendations} Recommendations` : 'Recommended'
         },
         stats: [],

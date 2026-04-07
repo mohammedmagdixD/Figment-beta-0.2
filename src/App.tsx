@@ -13,7 +13,9 @@ import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
 import { AlertTriangle, Loader2, ListPlus } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
-import { getUserProfile, getUserShelves, getUserDiary } from './services/supabaseData';
+import { getUserProfile, logMediaItem, addSectionItem, syncMediaToShelf } from './services/supabaseData';
+import { useDiary } from './hooks/useDiary';
+import { useShelves } from './hooks/useShelves';
 import { FeedView } from './views/FeedView';
 import { RecommendationsView } from './views/RecommendationsView';
 import { AddView } from './views/AddView';
@@ -101,12 +103,12 @@ export default function App() {
     avatar: '',
     socials: []
   });
-  const [sections, setSections] = useState<any[]>([]);
+  const { diary, isLoading: isDiaryLoading, refetch: refetchDiary } = useDiary(user?.id);
+  const { shelves: sections, setShelves: setSections, isLoading: isShelvesLoading, refetch: refetchShelves } = useShelves(user?.id);
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<{ id: string, type: MediaType, title: string } | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('profile');
-  const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
@@ -115,25 +117,7 @@ export default function App() {
       if (!user) return;
       try {
         setIsDataLoading(true);
-        const [userProfile, shelvesData, userDiary] = await Promise.all([
-          getUserProfile(user.id),
-          getUserShelves(user.id),
-          getUserDiary(user.id)
-        ]);
-
-        const getStandardShelfTitle = (type: string, originalTitle: string) => {
-          switch(type?.toLowerCase()) {
-            case 'movie': return 'Films';
-            case 'tv': return 'TV Shows';
-            case 'music': return 'Music';
-            case 'anime': return 'Anime';
-            case 'manga': return 'Manga';
-            case 'book': return 'Books';
-            case 'podcast': return 'Podcasts';
-            case 'webnovel': return 'Webnovels';
-            default: return originalTitle;
-          }
-        };
+        const userProfile = await getUserProfile(user.id);
 
         const getFallbackAvatar = (name: string) => {
           const initial = (name || 'A').charAt(0).toUpperCase();
@@ -154,26 +138,6 @@ export default function App() {
             icon: s.platform.toLowerCase()
           })) || []
         });
-
-        const standardizedShelves = shelvesData.map((s: any) => ({
-          ...s,
-          title: getStandardShelfTitle(s.type, s.title)
-        }));
-
-        setSections(standardizedShelves);
-        
-        setDiary(userDiary.map((d: any) => ({
-          id: d.id,
-          date: d.logged_date,
-          rating: d.rating,
-          media: {
-            id: d.media_items.id,
-            title: d.media_items.title,
-            subtitle: d.media_items.subtitle,
-            image: d.media_items.poster_url || d.media_items.backdrop_url,
-            type: d.media_items.media_type
-          }
-        })));
 
       } catch (error) {
         console.error('Error loading data:', error);
@@ -211,55 +175,58 @@ export default function App() {
     setActiveTab('add');
   };
 
-  const handleAddItem = (item: SearchResult, details: { rating: number, date: string, liked: boolean, rewatched: boolean }) => {
-    // Add to profile section if activeSection is set
-    if (activeSection) {
-      setSections(prevSections => 
-        prevSections.map(section => {
-          if (section.id === activeSection.id) {
-            if (section.items.some((i: any) => i.id === item.id)) return section;
-            return {
-              ...section,
-              items: [{ ...item, rating: details.rating, dateAdded: details.date, liked: details.liked, rewatched: details.rewatched }, ...section.items]
-            };
-          }
-          return section;
-        })
-      );
-    }
-
-    // Add to diary
-    const newDiaryEntry: DiaryEntry = {
-      id: `d_${Date.now()}`,
-      date: details.date,
-      rating: details.rating,
-      liked: details.liked,
-      rewatched: details.rewatched,
-      media: {
-        ...item,
-        type: item.type || (activeSection?.type as MediaType) || 'movie'
+  const handleAddItem = async (item: SearchResult, details: { rating: number, date: string, liked: boolean, rewatched: boolean }) => {
+    if (!user) return;
+    try {
+      const mediaItemToLog = { ...item, type: item.type || activeSection?.type || 'movie' };
+      
+      if (activeSection) {
+        try {
+          await addSectionItem(activeSection.id, mediaItemToLog, user.id);
+        } catch (e) {
+          console.error('Failed to add to section:', e);
+        }
+      } else {
+        try {
+          await syncMediaToShelf(user.id, mediaItemToLog);
+        } catch (e) {
+          console.error('Failed to sync to shelf:', e);
+        }
       }
-    };
-    setDiary(prev => [newDiaryEntry, ...prev]);
+      
+      await logMediaItem(user.id, mediaItemToLog, details);
+      
+      refetchDiary();
+      refetchShelves();
+    } catch (error) {
+      console.error('Failed to log media:', error);
+    }
   };
 
-  const handleLogEpisode = (episode: any, rating: number, date: string, liked: boolean, rewatched: boolean, podcast: any) => {
-    const newDiaryEntry: DiaryEntry = {
-      id: `d_${Date.now()}`,
-      date: date,
-      rating: rating,
-      liked: liked,
-      rewatched: rewatched,
-      media: {
+  const handleLogEpisode = async (episode: any, rating: number, date: string, liked: boolean, rewatched: boolean, podcast: any) => {
+    if (!user) return;
+    try {
+      const mediaItemToLog = {
         id: episode.id,
         title: episode.title,
-        subtitle: podcast.title, // Use podcast title as subtitle
-        image: podcast.image, // Use podcast image
+        subtitle: podcast.title,
+        image: podcast.image,
         type: 'podcast',
         description: episode.description
+      };
+      
+      try {
+        await syncMediaToShelf(user.id, mediaItemToLog);
+      } catch (e) {
+        console.error('Failed to sync episode to shelf:', e);
       }
-    };
-    setDiary(prev => [newDiaryEntry, ...prev]);
+      await logMediaItem(user.id, mediaItemToLog, { rating, date, liked, rewatched });
+      
+      refetchDiary();
+      refetchShelves();
+    } catch (error) {
+      console.error('Failed to log episode:', error);
+    }
   };
 
   const handleRecommendSubmit = (recommendation: any) => {
@@ -288,7 +255,15 @@ export default function App() {
               <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
               
               {sections.filter(s => s.items && s.items.length > 0).length > 0 ? (
-                <Reorder.Group axis="y" values={sections} onReorder={setSections} className="space-y-2">
+                <Reorder.Group 
+                  axis="y" 
+                  values={sections.filter(s => s.items && s.items.length > 0)} 
+                  onReorder={(newVisibleSections) => {
+                    const hiddenSections = sections.filter(s => !(s.items && s.items.length > 0));
+                    setSections([...newVisibleSections, ...hiddenSections]);
+                  }} 
+                  className="space-y-2"
+                >
                   {sections.filter(s => s.items && s.items.length > 0).map((section) => (
                     <DraggableSection 
                       key={section.id} 

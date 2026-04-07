@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useAnimation, PanInfo, useDragControls } from 'motion/react';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, Star } from 'lucide-react';
 import { SearchResult, getPodcastEpisodes, PodcastEpisode, getMovieDetails, getTvDetails, MovieDetails, getAnimeDetails, getMangaDetails, AnimeDetails, MangaDetails, getBookDetails, getAudioDetails } from '../services/api';
 import { RatingModule } from './RatingModule';
 import { haptics } from '../utils/haptics';
@@ -22,9 +22,11 @@ interface MediaDetailsModalProps {
   item: SearchResult & { rating?: number; dateAdded?: string; type?: string } | null;
   onClose: () => void;
   onLogEpisode?: (episode: PodcastEpisode, rating: number, date: string, liked: boolean, rewatched: boolean) => void;
+  fullScreen?: boolean;
+  onRateClick?: () => void;
 }
 
-export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsModalProps) {
+export function MediaDetailsModal({ item, onClose, onLogEpisode, fullScreen, onRateClick }: MediaDetailsModalProps) {
   useScrollLock(!!item);
 
   const [mediaDetails, setMediaDetails] = useState<any | null>(null);
@@ -43,8 +45,8 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
 
   useEffect(() => {
     if (item) {
-      setSheetState('half');
-      controls.start('half');
+      setSheetState(fullScreen ? 'full' : 'half');
+      controls.start(fullScreen ? 'full' : 'half');
       setIsLoading(true);
       
       const fetchDetails = async () => {
@@ -218,69 +220,101 @@ export function MediaDetailsModal({ item, onClose, onLogEpisode }: MediaDetailsM
       };
     }
 
-    return <UniversalDetailCard data={normalizedData} />;
+    return (
+      <div className="relative h-full">
+        {fullScreen && (
+          <div className="absolute top-4 left-4 right-4 flex justify-between z-50 pt-safe-top">
+            <button 
+              onClick={handleClose}
+              className="p-2.5 bg-[var(--system-background)]/70 backdrop-blur-md rounded-full text-[var(--label)] hover:bg-[var(--secondary-system-background)]/80 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            {onRateClick && (
+              <button 
+                onClick={onRateClick}
+                className="p-2.5 bg-[var(--system-background)]/70 backdrop-blur-md rounded-full text-[var(--label)] hover:bg-[var(--secondary-system-background)]/80 transition-colors"
+              >
+                <Star className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+        <UniversalDetailCard data={normalizedData} />
+      </div>
+    );
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          onClick={() => {
-            if (sheetState === 'half') handleClose();
-          }}
-          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        />
-        
-        <motion.div 
-          initial="closed"
-          animate={controls}
-          exit="closed"
-          variants={{
-            closed: { y: '100%' },
-            half: { y: '50%' },
-            full: { y: '5%' }
-          }}
-          transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-          drag="y"
-          dragControls={dragControls}
-          dragListener={false}
-          dragConstraints={{ top: 0 }}
-          dragElastic={0.2}
-          onDragEnd={handleDragEnd}
-          onClick={(e) => e.stopPropagation()}
-          className="relative w-full max-w-md bg-[var(--system-background)] rounded-t-[32px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[95vh] sm:h-[85vh] sm:max-h-[850px]"
-        >
-          {/* Dash Icon for dragging */}
-          <div 
-            className="absolute top-0 left-0 right-0 z-50 flex justify-center pt-3 pb-3 cursor-grab active:cursor-grabbing touch-none"
-            onPointerDown={(e) => dragControls.start(e)}
+      {item && (
+        <div className={`fixed inset-0 z-50 flex items-end justify-center ${fullScreen ? '' : 'sm:items-center sm:p-4'}`}>
+          {!fullScreen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              onClick={() => {
+                if (sheetState === 'half') handleClose();
+              }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+          )}
+          
+          <motion.div 
+            initial={fullScreen ? { opacity: 0, y: 20 } : "closed"}
+            animate={fullScreen ? { opacity: 1, y: 0 } : controls}
+            exit={fullScreen ? { opacity: 0, y: 20 } : "closed"}
+            variants={fullScreen ? undefined : {
+              closed: { y: '100%' },
+              half: { y: '50%' },
+              full: { y: '5%' }
+            }}
+            transition={fullScreen ? { duration: 0.3 } : { type: 'spring', stiffness: 400, damping: 40 }}
+            drag={fullScreen ? false : "y"}
+            dragControls={dragControls}
+            dragListener={false}
+            dragConstraints={{ top: 0 }}
+            dragElastic={0.2}
+            onDragEnd={fullScreen ? undefined : handleDragEnd}
+            onClick={(e) => e.stopPropagation()}
+            className={`relative w-full bg-[var(--system-background)] shadow-2xl overflow-hidden flex flex-col ${
+              fullScreen 
+                ? 'h-full max-w-full rounded-none' 
+                : 'max-w-md rounded-t-[32px] sm:rounded-3xl h-[95vh] sm:h-[85vh] sm:max-h-[850px]'
+            }`}
           >
-            <div className="w-12 h-1.5 bg-[var(--tertiary-label)] rounded-full" />
-          </div>
+            {/* Dash Icon for dragging */}
+            {!fullScreen && (
+              <div 
+                className="absolute top-0 left-0 right-0 z-50 flex justify-center pt-3 pb-3 cursor-grab active:cursor-grabbing touch-none"
+                onPointerDown={(e) => dragControls.start(e)}
+              >
+                <div className="w-12 h-1.5 bg-[var(--tertiary-label)] rounded-full" />
+              </div>
+            )}
 
-          <div 
-            className={`flex-1 hide-scrollbar overlay-content ${sheetState === 'full' ? 'overflow-y-auto' : 'overflow-hidden'}`}
-            onPointerDown={(e) => {
-              if (sheetState === 'half') {
-                dragControls.start(e);
-              }
-            }}
-            onWheel={(e) => {
-              if (sheetState === 'half' && e.deltaY > 0) {
-                setSheetState('full');
-                controls.start('full');
-                haptics.light();
-              }
-            }}
-          >
-            {renderMediaContent()}
-          </div>
-        </motion.div>
-      </div>
+            <div 
+              className={`flex-1 hide-scrollbar overlay-content ${sheetState === 'full' || fullScreen ? 'overflow-y-auto' : 'overflow-hidden'}`}
+              onPointerDown={(e) => {
+                if (!fullScreen && sheetState === 'half') {
+                  dragControls.start(e);
+                }
+              }}
+              onWheel={(e) => {
+                if (!fullScreen && sheetState === 'half' && e.deltaY > 0) {
+                  setSheetState('full');
+                  controls.start('full');
+                  haptics.light();
+                }
+              }}
+            >
+              {renderMediaContent()}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }

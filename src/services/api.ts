@@ -29,6 +29,7 @@ export interface SearchResult {
   url?: string;
   previewUrl?: string; // For music previews
   description?: string; // For details modal
+  type?: string;
 }
 
 export async function fetchWithBackoff(url: string, options?: RequestInit, maxRetries = 3, initialDelay = 1000): Promise<Response> {
@@ -808,115 +809,120 @@ export async function fetchRelatedMedia(item: UniversalMediaData): Promise<{ lis
 export async function searchMedia(query: string, type: MediaType): Promise<SearchResult[]> {
   if (!query) return [];
   
-  try {
-    if (type === 'podcast') {
-      let results: SearchResult[] = [];
-      // Try iTunes first
-      try {
-        const res = await fetchWithBackoff(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=15`);
-        if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
-        const data = await res.json();
-        results = itunesSearchAdapter(data, 'podcast');
-      } catch (e) {
-        console.warn('iTunes search failed, falling back to Spotify', e);
+  const fetchResults = async (): Promise<SearchResult[]> => {
+    try {
+      if (type === 'podcast') {
+        let results: SearchResult[] = [];
+        // Try iTunes first
+        try {
+          const res = await fetchWithBackoff(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=podcast&entity=podcast&limit=15`);
+          if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
+          const data = await res.json();
+          results = itunesSearchAdapter(data, 'podcast');
+        } catch (e) {
+          console.warn('iTunes search failed, falling back to Spotify', e);
+        }
+
+        // Fallback to Spotify if no results
+        if (results.length === 0) {
+          try {
+            const res = await fetchWithBackoff(`/api/search/spotify?q=${encodeURIComponent(query)}&type=show`);
+            if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
+            const data = await res.json();
+            results = spotifySearchAdapter(data, 'show');
+          } catch (e) {
+            console.error('Spotify search failed:', e);
+          }
+        }
+
+        // Deduplicate podcasts by title and subtitle
+        const seen = new Set();
+        return results.filter(item => {
+          const key = `${item.title}-${item.subtitle}`.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
 
-      // Fallback to Spotify if no results
-      if (results.length === 0) {
+      if (type === 'music') {
+        // Try Spotify first
         try {
-          const res = await fetchWithBackoff(`/api/search/spotify?q=${encodeURIComponent(query)}&type=show`);
+          const res = await fetchWithBackoff(`/api/search/spotify?q=${encodeURIComponent(query)}`);
           if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
           const data = await res.json();
-          results = spotifySearchAdapter(data, 'show');
+          const adaptedResults = spotifySearchAdapter(data, 'track');
+          if (adaptedResults && adaptedResults.length > 0) {
+            return adaptedResults;
+          }
         } catch (e) {
-          console.error('Spotify search failed:', e);
+          console.warn('Spotify search failed or yielded no results, falling back to iTunes', e);
         }
-      }
 
-      // Deduplicate podcasts by title and subtitle
-      const seen = new Set();
-      return results.filter(item => {
-        const key = `${item.title}-${item.subtitle}`.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-
-    if (type === 'music') {
-      // Try Spotify first
-      try {
-        const res = await fetchWithBackoff(`/api/search/spotify?q=${encodeURIComponent(query)}`);
-        if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
-        const data = await res.json();
-        const adaptedResults = spotifySearchAdapter(data, 'track');
-        if (adaptedResults && adaptedResults.length > 0) {
-          return adaptedResults;
-        }
-      } catch (e) {
-        console.warn('Spotify search failed or yielded no results, falling back to iTunes', e);
-      }
-
-      // Fallback to iTunes
-      try {
-        const res = await fetchWithBackoff(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=15`);
-        if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
-        const data = await res.json();
-        return itunesSearchAdapter(data, 'music');
-      } catch (e) {
-        console.error('iTunes search failed:', e);
-        return [];
-      }
-    }
-    
-    if (type === 'movie' || type === 'tv') {
-      // Using TMDB API for reliable movie/tv search
-      const endpoint = type === 'movie' ? 'search/movie' : 'search/tv';
-      const res = await fetchWithBackoff(`/api/tmdb/${endpoint}?query=${encodeURIComponent(query)}`);
-      if (!res.ok) throw new Error(`TMDB API error: ${res.status}`);
-      const data = await res.json();
-      return tmdbSearchAdapter(data, type);
-    }
-
-    if (type === 'book' || type === 'webnovel') {
-      try {
-        const excludeTerms = '-summary -study -analysis -review -notes -guide';
-        let finalQuery = query;
-        if (type === 'webnovel') {
-          finalQuery += ' webnovel';
-        } else if (type === 'book') {
-          finalQuery += ` ${excludeTerms}`;
-        }
-        const res = await fetchWithBackoff(`/api/books/volumes?q=${encodeURIComponent(finalQuery)}&printType=books&orderBy=relevance&maxResults=40`, undefined, 0);
-        if (!res.ok) throw new Error(`Google Books API error: ${res.status}`);
-        const data = await res.json();
-        
-        return googleBooksSearchAdapter(data, query, type);
-      } catch (e) {
-        console.warn('Google Books API failed, falling back to OpenLibrary', e);
+        // Fallback to iTunes
         try {
-          const res = await fetchWithBackoff(`https://openlibrary.org/search.json?q=${encodeURIComponent(query + (type === 'webnovel' ? ' webnovel' : ''))}&limit=15`);
-          if (!res.ok) throw new Error(`OpenLibrary API error: ${res.status}`);
+          const res = await fetchWithBackoff(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=15`);
+          if (!res.ok) throw new Error(`iTunes API error: ${res.status}`);
           const data = await res.json();
-          return openLibrarySearchAdapter(data);
-        } catch (olErr) {
-          console.error(`Error searching ${type} on OpenLibrary:`, olErr);
+          return itunesSearchAdapter(data, 'music');
+        } catch (e) {
+          console.error('iTunes search failed:', e);
           return [];
         }
       }
-    }
+      
+      if (type === 'movie' || type === 'tv') {
+        // Using TMDB API for reliable movie/tv search
+        const endpoint = type === 'movie' ? 'search/movie' : 'search/tv';
+        const res = await fetchWithBackoff(`/api/tmdb/${endpoint}?query=${encodeURIComponent(query)}`);
+        if (!res.ok) throw new Error(`TMDB API error: ${res.status}`);
+        const data = await res.json();
+        return tmdbSearchAdapter(data, type);
+      }
 
-    if (type === 'anime' || type === 'manga') {
-      const url = `https://api.myanimelist.net/v2/${type}?q=${encodeURIComponent(query)}&limit=15&fields=id,title,main_picture,synopsis,mean,start_season,media_type`;
-      const res = await fetchMAL(url);
-      if (res.status === 404) return [];
-      if (!res.ok) throw new Error(`MAL API error: ${res.status}`);
-      const data = await res.json();
-      return malSearchAdapter(data, type);
+      if (type === 'book' || type === 'webnovel') {
+        try {
+          const excludeTerms = '-summary -study -analysis -review -notes -guide';
+          let finalQuery = query;
+          if (type === 'webnovel') {
+            finalQuery += ' webnovel';
+          } else if (type === 'book') {
+            finalQuery += ` ${excludeTerms}`;
+          }
+          const res = await fetchWithBackoff(`/api/books/volumes?q=${encodeURIComponent(finalQuery)}&printType=books&orderBy=relevance&maxResults=40`, undefined, 0);
+          if (!res.ok) throw new Error(`Google Books API error: ${res.status}`);
+          const data = await res.json();
+          
+          return googleBooksSearchAdapter(data, query, type);
+        } catch (e) {
+          console.warn('Google Books API failed, falling back to OpenLibrary', e);
+          try {
+            const res = await fetchWithBackoff(`https://openlibrary.org/search.json?q=${encodeURIComponent(query + (type === 'webnovel' ? ' webnovel' : ''))}&limit=15`);
+            if (!res.ok) throw new Error(`OpenLibrary API error: ${res.status}`);
+            const data = await res.json();
+            return openLibrarySearchAdapter(data);
+          } catch (olErr) {
+            console.error(`Error searching ${type} on OpenLibrary:`, olErr);
+            return [];
+          }
+        }
+      }
+
+      if (type === 'anime' || type === 'manga') {
+        const url = `https://api.myanimelist.net/v2/${type}?q=${encodeURIComponent(query)}&limit=15&fields=id,title,main_picture,synopsis,mean,start_season,media_type`;
+        const res = await fetchMAL(url);
+        if (res.status === 404) return [];
+        if (!res.ok) throw new Error(`MAL API error: ${res.status}`);
+        const data = await res.json();
+        return malSearchAdapter(data, type);
+      }
+    } catch (error) {
+      console.error(`Error searching ${type}:`, error);
+      return [];
     }
-  } catch (error) {
-    console.error(`Error searching ${type}:`, error);
     return [];
-  }
-  return [];
+  };
+
+  const results = await fetchResults();
+  return results.map(r => ({ ...r, type }));
 }

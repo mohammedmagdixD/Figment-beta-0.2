@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, ArrowLeft, Music, Headphones, Book, Film, Tv, Clock } from 'lucide-react';
-import { MediaType, SearchResult } from '../services/api';
+import { Search, ArrowLeft, Music, Headphones, Book, Film, Tv, Clock, Star } from 'lucide-react';
+import { MediaType, SearchResult, searchMedia } from '../services/api';
 import { haptics } from '../utils/haptics';
 import { useSearchHistory } from '../hooks/useSearchHistory';
+import { useLongPress } from '../hooks/useLongPress';
 import { LogMediaModal } from '../components/LogMediaModal';
+import { MediaDetailsModal } from '../components/MediaDetailsModal';
 
 const MEDIA_TYPES: { id: MediaType; label: string; icon: React.ReactNode }[] = [
   { id: 'movie', label: 'Films', icon: <Film className="w-4 h-4" /> },
@@ -16,6 +18,38 @@ const MEDIA_TYPES: { id: MediaType; label: string; icon: React.ReactNode }[] = [
   { id: 'podcast', label: 'Podcasts', icon: <Headphones className="w-4 h-4" /> },
   { id: 'webnovel', label: 'Webnovels', icon: <Book className="w-4 h-4" /> },
 ];
+
+function HistoryItem({ 
+  item, 
+  onLongPress, 
+  onClick 
+}: { 
+  item: any; 
+  onLongPress: () => void; 
+  onClick: () => void; 
+}) {
+  const longPressProps = useLongPress({
+    onLongPress
+  });
+
+  return (
+    <div 
+      {...longPressProps}
+      className="flex items-center justify-between py-3 px-2 hover:bg-[var(--tertiary-system-background)] transition-colors cursor-pointer group select-none"
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-3 overflow-hidden">
+        <Clock className="w-4 h-4 text-[var(--secondary-label)] shrink-0" />
+        <span className="font-sans text-[var(--label)] truncate select-none">{item.query}</span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0 pl-2">
+        <span className="text-xs font-medium px-3 py-1 rounded-full border border-[var(--separator)] bg-transparent text-[var(--secondary-label)] select-none">
+          {MEDIA_TYPES.find(t => t.id === item.mediaType)?.label || item.mediaType}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchResult, details: { rating: number, date: string, liked: boolean, rewatched: boolean }) => void, initialType?: MediaType }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -30,42 +64,32 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
+  const [detailItem, setDetailItem] = useState<SearchResult | null>(null);
 
   const { history, addToHistory, removeFromHistory } = useSearchHistory();
   const inputRef = useRef<HTMLInputElement>(null);
-  const observerTarget = useRef<HTMLDivElement>(null);
 
-  const handleSearch = useCallback(async (searchQuery: string, loadMore = false) => {
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
     
-    if (!loadMore) {
-      setIsLoading(true);
-      setHasSearched(true);
-      setPage(1);
+    setIsLoading(true);
+    setHasSearched(true);
+    setResults([]);
+    addToHistory(searchQuery, activeType);
+
+    try {
+      const data = await searchMedia(searchQuery, activeType);
+      setResults(data);
+    } catch (error) {
+      console.error('Search failed:', error);
       setResults([]);
-      addToHistory(searchQuery, activeType);
-    }
-
-    // Mock API call
-    setTimeout(() => {
-      const mockResults: SearchResult[] = Array.from({ length: loadMore ? 10 : 20 }).map((_, i) => ({
-        id: `mock_${Date.now()}_${i}`,
-        title: `${searchQuery} - ${activeType} ${loadMore ? page * 20 + i + 1 : i + 1}`,
-        subtitle: `Mock ${activeType} description`,
-        image: `https://picsum.photos/seed/${searchQuery}${i}/200/300`,
-        type: activeType
-      }));
-
-      setResults(prev => loadMore ? [...prev, ...mockResults] : mockResults);
-      setHasMore(mockResults.length > 0); // In a real app, check if returned items < limit
+    } finally {
       setIsLoading(false);
-      if (!loadMore) setPage(2);
-      else setPage(p => p + 1);
-    }, 800);
-  }, [activeType, addToHistory, page]);
+    }
+  }, [activeType, addToHistory]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -82,25 +106,25 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
   const handleHistoryClick = (historyQuery: string, historyType: MediaType) => {
     setQuery(historyQuery);
     setActiveType(historyType);
-    handleSearch(historyQuery);
+    
+    // We need to wait for state to update before searching, 
+    // or just pass the type directly to a modified handleSearch.
+    // Since handleSearch uses the activeType from state (via useCallback deps),
+    // we should use a slight timeout or just call searchMedia directly here.
+    
+    setIsLoading(true);
+    setHasSearched(true);
+    setResults([]);
+    addToHistory(historyQuery, historyType);
+
+    searchMedia(historyQuery, historyType)
+      .then(data => setResults(data))
+      .catch(err => {
+        console.error('Search failed:', err);
+        setResults([]);
+      })
+      .finally(() => setIsLoading(false));
   };
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && hasMore && !isLoading && hasSearched) {
-          handleSearch(query, true);
-        }
-      },
-      { threshold: 1.0 }
-    );
-
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
-
-    return () => observer.disconnect();
-  }, [hasMore, isLoading, hasSearched, handleSearch, query]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
@@ -108,23 +132,28 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
       <div className="px-4 pt-4 pb-2 z-10 bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
         <div className="flex items-center gap-3">
           <AnimatePresence>
-            {isFocused && (
+            {(isFocused || hasSearched) && (
               <motion.button
                 initial={{ opacity: 0, width: 0, scale: 0.8 }}
-                animate={{ opacity: 1, width: 'auto', scale: 1 }}
+                animate={{ opacity: 1, width: 36, scale: 1 }}
                 exit={{ opacity: 0, width: 0, scale: 0.8 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                onClick={handleClearFocus}
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[var(--tertiary-system-background)] text-[var(--label)]"
+                onClick={() => {
+                  handleClearFocus();
+                  setHasSearched(false);
+                  setQuery('');
+                  setResults([]);
+                }}
+                className="flex-shrink-0 h-9 flex items-center justify-center rounded-full bg-[var(--tertiary-system-background)] text-[var(--label)] overflow-hidden"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4 h-4 shrink-0" />
               </motion.button>
             )}
           </AnimatePresence>
           
           <div className="relative flex-1">
             <Search 
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--secondary-label)] cursor-pointer" 
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--secondary-label)] cursor-pointer" 
               onClick={() => {
                 inputRef.current?.blur();
                 handleSearch(query);
@@ -138,13 +167,13 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onKeyDown={handleKeyDown}
-              className="w-full bg-[var(--tertiary-system-background)] border border-[var(--separator)] rounded-full py-3 pl-11 pr-4 text-base font-sans text-[var(--label)] placeholder:text-[var(--secondary-label)] focus:outline-none focus:ring-2 focus:ring-[var(--label)]/10 transition-all shadow-sm"
+              className="w-full bg-[var(--tertiary-system-background)] border border-[var(--separator)] rounded-full py-2.5 pl-10 pr-4 text-sm font-sans text-[var(--label)] placeholder:text-[var(--secondary-label)] focus:outline-none focus:ring-2 focus:ring-[var(--label)]/10 transition-all shadow-sm"
             />
           </div>
         </div>
 
         {/* Media Type Selector */}
-        <div className="flex gap-2 overflow-x-auto pb-2 pt-4 -mx-4 px-4 hide-scrollbar">
+        <div className="flex gap-2 overflow-x-auto pb-2 pt-3 -mx-4 px-4 hide-scrollbar">
           {MEDIA_TYPES.map((type) => (
             <motion.button
               key={type.id}
@@ -157,14 +186,16 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
                 setHasSearched(false);
                 setResults([]);
               }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-full whitespace-nowrap transition-all duration-300 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full whitespace-nowrap transition-all duration-300 ${
                 activeType === type.id
-                  ? 'bg-[var(--label)] text-[var(--system-background)] shadow-lg scale-105 ring-2 ring-[var(--label)] ring-offset-2 ring-offset-[var(--system-background)]'
+                  ? 'bg-[var(--label)] text-[var(--system-background)] shadow-sm scale-105 ring-1 ring-[var(--label)] ring-offset-1 ring-offset-[var(--system-background)]'
                   : 'bg-[var(--tertiary-system-background)] text-[var(--secondary-label)] hover:bg-[var(--secondary-system-background)] hover:scale-105'
               }`}
             >
-              {type.icon}
-              <span className="text-sm font-medium">{type.label}</span>
+              <div className="[&>svg]:w-3.5 [&>svg]:h-3.5 flex items-center justify-center">
+                {type.icon}
+              </div>
+              <span className="text-xs font-medium">{type.label}</span>
             </motion.button>
           ))}
         </div>
@@ -185,33 +216,18 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
               className="py-4"
             >
               {history.length > 0 ? (
-                <div className="space-y-1">
-                  <h3 className="text-sm font-medium text-[var(--secondary-label)] mb-3 px-1">Recent Searches</h3>
+                <div className="space-y-0">
+                  <h3 className="text-sm font-medium text-[var(--secondary-label)] mb-2 px-2">Recent Searches</h3>
                   {history.map((item) => (
-                    <div 
+                    <HistoryItem 
                       key={item.id}
-                      className="flex items-center justify-between p-3 rounded-xl hover:bg-[var(--tertiary-system-background)] transition-colors cursor-pointer group"
-                      onClick={() => handleHistoryClick(item.query, item.mediaType)}
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <Clock className="w-4 h-4 text-[var(--secondary-label)] shrink-0" />
-                        <span className="font-sans text-[var(--label)] truncate">{item.query}</span>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 pl-2">
-                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--tertiary-system-background)] text-[var(--secondary-label)]">
-                          {MEDIA_TYPES.find(t => t.id === item.mediaType)?.label || item.mediaType}
-                        </span>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromHistory(item.id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-[var(--secondary-label)] hover:text-[var(--label)] transition-all"
-                        >
-                          <ArrowLeft className="w-4 h-4 rotate-45" />
-                        </button>
-                      </div>
-                    </div>
+                      item={item}
+                      onLongPress={() => {
+                        haptics.medium();
+                        setDeleteConfirmId(item.id);
+                      }}
+                      onClick={() => !deleteConfirmId && handleHistoryClick(item.query, item.mediaType)}
+                    />
                   ))}
                 </div>
               ) : (
@@ -232,14 +248,30 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
               {results.map((item) => (
                 <div 
                   key={item.id} 
-                  className="flex items-center gap-4 p-3 rounded-xl bg-[var(--tertiary-system-background)] cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => setSelectedItem(item)}
+                  className="flex items-center gap-4 py-3 px-2 border-b border-[var(--separator)] last:border-0 cursor-pointer hover:bg-[var(--tertiary-system-background)] transition-colors group"
+                  onClick={() => setDetailItem(item)}
                 >
-                  <img src={item.image || undefined} alt={item.title} className="w-12 h-16 object-cover rounded-md bg-[var(--secondary-system-background)]" />
+                  <div className={`relative shrink-0 overflow-hidden bg-[var(--secondary-system-background)] shadow-sm border border-[var(--separator)] ${
+                    (item.type === 'music' || item.type === 'song') ? 'w-[60px] h-[60px] rounded-full' : 'w-[60px] aspect-[2/3] rounded-lg'
+                  }`}>
+                    <img src={item.image || undefined} alt={item.title} className="w-full h-full object-cover" />
+                    <div className={`absolute inset-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] pointer-events-none ${
+                      (item.type === 'music' || item.type === 'song') ? 'rounded-full' : 'rounded-lg'
+                    }`} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-sans font-semibold text-[var(--label)] truncate">{item.title}</h4>
                     <p className="font-sans text-sm text-[var(--secondary-label)] truncate">{item.subtitle}</p>
                   </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedItem(item);
+                    }}
+                    className="p-2.5 bg-transparent border border-[var(--separator)] shadow-sm rounded-full text-[var(--label)] hover:bg-[var(--secondary-system-background)] transition-colors shrink-0"
+                  >
+                    <Star className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
               
@@ -249,11 +281,26 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
                 </div>
               )}
               
-              <div ref={observerTarget} className="h-4" />
+              {!isLoading && results.length === 0 && hasSearched && (
+                <div className="flex flex-col items-center justify-center h-40 text-[var(--secondary-label)]">
+                  <p className="text-sm font-medium">No results found</p>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      <MediaDetailsModal
+        item={detailItem}
+        onClose={() => setDetailItem(null)}
+        fullScreen={true}
+        onRateClick={() => {
+          if (detailItem) {
+            setSelectedItem(detailItem);
+          }
+        }}
+      />
 
       <LogMediaModal 
         isOpen={!!selectedItem}
@@ -264,6 +311,41 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
           setSelectedItem(null);
         }}
       />
+
+      {/* Delete History Confirmation */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteConfirmId(null)}>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[var(--system-background)] rounded-2xl p-6 max-w-sm w-full shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-[var(--label)] mb-2">Delete Search History</h3>
+              <p className="text-[var(--secondary-label)] mb-6">Are you sure you want to remove this item from your search history?</p>
+              <div className="flex gap-3">
+                <button 
+                  className="flex-1 py-3 rounded-xl bg-[var(--secondary-system-background)] text-[var(--label)] font-medium"
+                  onClick={() => setDeleteConfirmId(null)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium"
+                  onClick={() => {
+                    removeFromHistory(deleteConfirmId);
+                    setDeleteConfirmId(null);
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

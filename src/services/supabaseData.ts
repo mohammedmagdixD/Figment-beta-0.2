@@ -32,26 +32,28 @@ export async function getUserShelves(userId: string) {
           media_items (*)
         )
       `)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .order('display_order', { ascending: true });
 
     if (error) throw error;
 
     return data.map((section: any) => {
       const items: UniversalMediaData[] = (section.section_items || [])
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .filter((si: any) => si.media_items)
         .map((si: any) => {
           const media = si.media_items;
           
           // Handle potential JSON fields if they are stored as strings or objects
           const header = media.header || { title: media.title || '', subtitle: media.subtitle || '' };
-          const images = media.images || {
-            backdropUrl: media.backdrop_url || media.backdropUrl || null,
-            posterUrl: media.poster_url || media.posterUrl || '',
-            backdropFallback: media.backdrop_fallback || media.backdropFallback || false,
+          const images = {
+            backdropUrl: media.images?.backdropUrl || media.backdrop_url || media.backdropUrl || null,
+            posterUrl: media.image_url || media.images?.posterUrl || media.poster_url || media.posterUrl || '',
+            backdropFallback: media.images?.backdropFallback || media.backdrop_fallback || media.backdropFallback || false,
           };
           
           return {
-            id: media.id || String(si.id),
+            id: media.external_id || media.id || String(si.id),
             mediaType: media.media_type || media.mediaType || 'unknown',
             images,
             header,
@@ -73,11 +75,34 @@ export async function getUserShelves(userId: string) {
 
       return {
         ...section,
+        type: section.media_type || section.type,
         items
       };
     });
   } catch (error) {
     console.error('Error fetching user shelves:', error);
+    throw error;
+  }
+}
+
+export async function updateShelfOrder(userId: string, shelfIds: string[]) {
+  try {
+    const updatePromises = shelfIds.map((id, index) => 
+      supabase
+        .from('profile_sections')
+        .update({ display_order: index })
+        .eq('id', id)
+        .eq('user_id', userId)
+    );
+
+    const results = await Promise.all(updatePromises);
+    
+    // Check for any errors in the results
+    for (const result of results) {
+      if (result.error) throw result.error;
+    }
+  } catch (error) {
+    console.error('Error updating shelf order:', error);
     throw error;
   }
 }
@@ -91,13 +116,171 @@ export async function getUserDiary(userId: string) {
         media_items (*)
       `)
       .eq('user_id', userId)
-      .order('logged_date', { ascending: false });
+      .order('logged_date', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
     return data;
   } catch (error) {
     console.error('Error fetching user diary:', error);
+    throw error;
+  }
+}
+
+export async function logMediaItem(
+  userId: string,
+  mediaItem: any,
+  logDetails: { rating: number; date: string; liked: boolean; rewatched: boolean }
+) {
+  try {
+    // 1. Upsert into media_items
+    const { data: mediaData, error: mediaError } = await supabase
+      .from('media_items')
+      .upsert({
+        external_id: String(mediaItem.id),
+        media_type: mediaItem.type || mediaItem.mediaType || 'unknown',
+        provider: mediaItem.provider || 'unknown',
+        title: mediaItem.title || mediaItem.header?.title || '',
+        subtitle: mediaItem.subtitle || mediaItem.header?.subtitle || '',
+        image_url: mediaItem.image || mediaItem.images?.posterUrl || mediaItem.images?.backdropUrl || '',
+      }, { onConflict: 'external_id,media_type' })
+      .select('id')
+      .single();
+
+    if (mediaError) throw mediaError;
+
+    // 2. Insert into diary_entries
+    const { data: diaryData, error: diaryError } = await supabase
+      .from('diary_entries')
+      .insert({
+        user_id: userId,
+        media_item_id: mediaData.id,
+        rating: logDetails.rating,
+        is_liked: logDetails.liked,
+        is_rewatch: logDetails.rewatched,
+        logged_date: logDetails.date,
+      })
+      .select()
+      .single();
+
+    if (diaryError) throw diaryError;
+
+    return diaryData;
+  } catch (error) {
+    console.error('Error logging media item:', error);
+    throw error;
+  }
+}
+export async function addSectionItem(
+  sectionId: string,
+  mediaItem: any,
+  userId?: string
+) {
+  try {
+    // 1. Upsert into media_items
+    const { data: mediaData, error: mediaError } = await supabase
+      .from('media_items')
+      .upsert({
+        external_id: String(mediaItem.id),
+        media_type: mediaItem.type || mediaItem.mediaType || 'unknown',
+        provider: mediaItem.provider || 'unknown',
+        title: mediaItem.title || mediaItem.header?.title || '',
+        subtitle: mediaItem.subtitle || mediaItem.header?.subtitle || '',
+        image_url: mediaItem.image || mediaItem.images?.posterUrl || mediaItem.images?.backdropUrl || '',
+      }, { onConflict: 'external_id,media_type' })
+      .select('id')
+      .single();
+
+    if (mediaError) throw mediaError;
+
+    // 2. Check if it already exists in section_items
+    const { data: existingItem, error: checkError } = await supabase
+      .from('section_items')
+      .select('id')
+      .eq('section_id', sectionId)
+      .eq('media_item_id', mediaData.id)
+      .maybeSingle();
+      
+    if (checkError) throw checkError;
+    
+    if (existingItem) {
+      return existingItem; // Already in the shelf
+    }
+
+    // 3. Insert into section_items
+    const { data: sectionData, error: sectionError } = await supabase
+      .from('section_items')
+      .insert({
+        section_id: sectionId,
+        media_item_id: mediaData.id,
+        display_order: 0
+      })
+      .select()
+      .single();
+
+    if (sectionError) throw sectionError;
+
+    return sectionData;
+  } catch (error) {
+    console.error('Error adding section item:', error);
+    throw error;
+  }
+}
+
+export async function syncMediaToShelf(userId: string, mediaItem: any) {
+  try {
+    const mediaType = mediaItem.type || mediaItem.mediaType || 'unknown';
+    
+    // 1. Find an existing shelf for this media type
+    const { data: existingSections, error: fetchError } = await supabase
+      .from('profile_sections')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('media_type', mediaType)
+      .limit(1);
+      
+    if (fetchError) throw fetchError;
+    
+    let sectionId;
+    
+    if (existingSections && existingSections.length > 0) {
+      sectionId = existingSections[0].id;
+    } else {
+      // 2. Create a new shelf if it doesn't exist
+      const titleMap: Record<string, string> = {
+        'movie': 'Films',
+        'tv': 'TV Shows',
+        'book': 'Books',
+        'anime': 'Anime',
+        'manga': 'Manga',
+        'music': 'Music',
+        'podcast': 'Podcasts',
+        'webnovel': 'Webnovels'
+      };
+      
+      const title = titleMap[mediaType] || `${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}s`;
+      
+      const { data: newSection, error: createError } = await supabase
+        .from('profile_sections')
+        .insert({
+          user_id: userId,
+          title: title,
+          media_type: mediaType,
+          display_order: 0
+        })
+        .select('id')
+        .single();
+        
+      if (createError) throw createError;
+      sectionId = newSection.id;
+    }
+    
+    // 3. Add item to this shelf
+    await addSectionItem(sectionId, mediaItem, userId);
+    
+  } catch (error) {
+    console.error('Error syncing media to shelf:', error);
     throw error;
   }
 }

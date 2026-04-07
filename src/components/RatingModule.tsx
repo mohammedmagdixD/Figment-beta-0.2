@@ -42,7 +42,7 @@ export function RatingModule({
     if (newRating > 5) newRating = 5;
     
     if (newRating !== rating) {
-      haptics.selection();
+      haptics.light();
       onRatingChange(newRating);
     }
   };
