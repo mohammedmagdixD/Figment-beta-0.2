@@ -72,7 +72,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAlbum, onCreateAlbum }: { section: any, onAddClick: () => void, onLogEpisode?: any, albums?: Album[], onAddToAlbum?: any, onCreateAlbum?: any }) {
+function DraggableSection({ section, onAddClick, onLogEpisode, albums, onAddToAlbum, onCreateAlbum }: { section: any, onAddClick?: () => void, onLogEpisode?: any, albums?: Album[], onAddToAlbum?: any, onCreateAlbum?: any }) {
   const controls = useDragControls();
   return (
     <Reorder.Item 
@@ -114,6 +114,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isOwnProfile, setIsOwnProfile] = useState<boolean>(true);
 
   const profileRef = React.useRef(profile);
   useEffect(() => {
@@ -149,6 +150,9 @@ export default function App() {
             setActiveTab(tabMatch[1] as TabType);
           }
         }
+
+        const viewingOwn = !targetUserId || user?.id === targetUserId;
+        setIsOwnProfile(viewingOwn);
 
         if (targetUserId === viewingUserIdRef.current && profileRef.current.handle !== '@guest') {
           setViewingUserId(targetUserId);
@@ -308,40 +312,60 @@ export default function App() {
           
           <div className="flex-1 overflow-y-auto hide-scrollbar scroll-container pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
             <main className={`pb-12 space-y-2 ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
-              <Header profile={profile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
+              <Header profile={profile} isOwnProfile={isOwnProfile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
               <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
               
               {sections.filter(s => s.items && s.items.length > 0).length > 0 ? (
-                <Reorder.Group 
-                  axis="y" 
-                  values={sections.filter(s => s.items && s.items.length > 0)} 
-                  onReorder={(newVisibleSections) => {
-                    const hiddenSections = sections.filter(s => !(s.items && s.items.length > 0));
-                    setSections([...newVisibleSections, ...hiddenSections]);
-                  }} 
-                  className="space-y-2"
-                >
-                  {sections.filter(s => s.items && s.items.length > 0).map((section) => (
-                    <DraggableSection 
-                      key={section.id} 
-                      section={section} 
-                      onAddClick={() => handleAddClick(section)}
-                      onLogEpisode={handleLogEpisode}
-                      albums={albums}
-                      onAddToAlbum={handleAddToAlbum}
-                      onCreateAlbum={handleCreateAlbum}
-                    />
-                  ))}
-                </Reorder.Group>
+                isOwnProfile ? (
+                  <Reorder.Group 
+                    axis="y" 
+                    values={sections.filter(s => s.items && s.items.length > 0)} 
+                    onReorder={(newVisibleSections) => {
+                      const hiddenSections = sections.filter(s => !(s.items && s.items.length > 0));
+                      setSections([...newVisibleSections, ...hiddenSections]);
+                    }} 
+                    className="space-y-2"
+                  >
+                    {sections.filter(s => s.items && s.items.length > 0).map((section) => (
+                      <DraggableSection 
+                        key={section.id} 
+                        section={section} 
+                        onAddClick={() => handleAddClick(section)}
+                        onLogEpisode={handleLogEpisode}
+                        albums={albums}
+                        onAddToAlbum={handleAddToAlbum}
+                        onCreateAlbum={handleCreateAlbum}
+                      />
+                    ))}
+                  </Reorder.Group>
+                ) : (
+                  <div className="space-y-2">
+                    {sections.filter(s => s.items && s.items.length > 0).map((section) => (
+                      <div key={section.id} className="relative bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] z-0">
+                        <MediaScroller 
+                          section={section} 
+                          dragControls={undefined}
+                          onAddClick={undefined}
+                          onLogEpisode={undefined}
+                          albums={albums}
+                          onAddToAlbum={undefined}
+                          onCreateAlbum={undefined}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
                   <div className="w-16 h-16 mb-4 rounded-full bg-[var(--secondary-system-background)] flex items-center justify-center">
                     <ListPlus className="w-8 h-8 text-[var(--secondary-label)]" />
                   </div>
                   <h3 className="font-serif text-xl font-semibold text-[var(--label)] mb-2">No shelves curated yet</h3>
-                  <p className="font-sans text-sm text-[var(--secondary-label)] max-w-[250px]">
-                    Start adding media to your shelves to build your profile.
-                  </p>
+                  {isOwnProfile && (
+                    <p className="font-sans text-sm text-[var(--secondary-label)] max-w-[250px]">
+                      Start adding media to your shelves to build your profile.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -408,6 +432,18 @@ export default function App() {
           <BottomTabBar 
             activeTab={activeTab} 
             onTabChange={(tab) => {
+              if (tab === 'add' && !isOwnProfile) {
+                // If viewing someone else's profile, switch to own profile before adding
+                if (user) {
+                  setViewingUserId(user.id);
+                  setActiveTab('add');
+                  window.history.pushState({}, '', '/add');
+                } else {
+                  setIsAuthModalOpen(true);
+                }
+                return;
+              }
+
               if (tab === 'add' && activeTab !== 'add') {
                 setActiveSection(null);
               }

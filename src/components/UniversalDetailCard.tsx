@@ -9,6 +9,7 @@ import { fetchRelatedMedia } from '../services/api';
 import { useLongPress } from '../hooks/useLongPress';
 import { getCopyTextForMedia } from '../utils/mediaFormatters';
 import { haptics } from '../utils/haptics';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 interface UniversalDetailCardProps {
   data: UniversalMediaData;
@@ -22,6 +23,43 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
   const [isLoadingRelated, setIsLoadingRelated] = useState(false);
   const [streamingLinks, setStreamingLinks] = useState<any | null>(data.streamingLinks || null);
   const [showCopyToast, setShowCopyToast] = useState(false);
+  
+  const [isPosterExpanded, setIsPosterExpanded] = useState(false);
+  const [isHighResLoaded, setIsHighResLoaded] = useState(false);
+  const popstateTriggeredRef = useRef(false);
+  
+  useScrollLock(isPosterExpanded);
+
+  useEffect(() => {
+    if (!isPosterExpanded) {
+      setIsHighResLoaded(false);
+    }
+  }, [isPosterExpanded]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      popstateTriggeredRef.current = true;
+      if (isPosterExpanded) {
+        setIsPosterExpanded(false);
+      }
+    };
+
+    if (isPosterExpanded) {
+      popstateTriggeredRef.current = false;
+      window.history.pushState({ imageExpanded: true }, '');
+      window.addEventListener('popstate', handlePopState);
+    }
+
+    return () => {
+      if (isPosterExpanded) {
+        window.removeEventListener('popstate', handlePopState);
+        if (!popstateTriggeredRef.current) {
+          window.history.back();
+        }
+      }
+    };
+  }, [isPosterExpanded]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const longPressProps = useLongPress({
@@ -117,10 +155,12 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
 
         <div className="absolute -bottom-16 left-6 flex items-end gap-4">
           <div className={`w-28 ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'aspect-square' : 'aspect-[2/3]'} rounded-xl overflow-hidden shadow-xl border-2 border-[var(--system-background)] shrink-0 bg-[var(--secondary-system-background)]`}>
-            <img 
+            <motion.img 
+              layoutId={`poster-${data.id}`}
+              onClick={() => setIsPosterExpanded(true)}
               src={data.images.posterUrl || undefined} 
               alt={data.header.title} 
-              className="w-full h-full object-cover"
+              className={`w-full h-full object-cover cursor-pointer ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'rounded-full' : 'rounded-xl'}`}
               referrerPolicy="no-referrer"
             />
           </div>
@@ -388,6 +428,62 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
               Copied to clipboard
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isPosterExpanded && (
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsPosterExpanded(false)}
+            className="fixed inset-0 z-[9998] bg-black/95"
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isPosterExpanded && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
+            <motion.div
+              key="image-wrapper"
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              onDragEnd={(e, info) => {
+                if (Math.abs(info.offset.y) > 100 || Math.abs(info.velocity.y) > 500) {
+                  setIsPosterExpanded(false);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className={`relative w-full max-w-md ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'aspect-square' : 'aspect-[2/3]'} flex items-center justify-center pointer-events-auto`}
+            >
+              {/* Base Layer (Low-Res) */}
+              <motion.img
+                layoutId={`poster-${data.id}`}
+                src={data.images.posterUrl || undefined}
+                alt={data.header.title}
+                className={`absolute w-full h-full object-cover ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'rounded-full' : 'rounded-xl'} shadow-2xl`}
+                referrerPolicy="no-referrer"
+              />
+              
+              {/* Top Layer (High-Res) */}
+              {data.images.posterUrl && (
+                <motion.img
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: isHighResLoaded ? 1 : 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  src={data.images.posterUrl.replace('w500', 'original')} // Assuming TMDB format, adjust if needed
+                  alt={data.header.title}
+                  onLoad={() => setIsHighResLoaded(true)}
+                  className={`absolute w-full h-full object-cover ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'rounded-full' : 'rounded-xl'}`}
+                  referrerPolicy="no-referrer"
+                />
+              )}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

@@ -6,13 +6,13 @@ import { useState } from 'react';
 
 interface HeaderProps {
   profile: any;
+  isOwnProfile?: boolean;
   onRecommendClick?: () => void;
   onAuthClick?: () => void;
 }
 
-export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) {
+export function Header({ profile, isOwnProfile = true, onRecommendClick, onAuthClick }: HeaderProps) {
   const { user, signOut } = useAuth();
-  const isOwner = !!user;
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
 
   const getIcon = (iconName: string) => {
@@ -65,7 +65,7 @@ export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) 
       <header className="px-4 pt-12 pb-6 relative">
         {/* Top Actions - Glassmorphic */}
         <div className="absolute top-4 right-4 flex gap-3 z-10">
-          {!isOwner ? (
+          {!isOwnProfile ? (
             <motion.button 
               whileHover={{ scale: window.matchMedia('(hover: hover)').matches ? 1.05 : 1 }}
               whileTap={{ scale: 0.95 }}
@@ -169,7 +169,7 @@ export function Header({ profile, onRecommendClick, onAuthClick }: HeaderProps) 
             ))}
           </motion.div>
 
-          {!isOwner && (
+          {!isOwnProfile && (
             <motion.button
               initial={{ y: 10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}

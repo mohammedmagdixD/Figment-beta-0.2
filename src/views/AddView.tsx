@@ -72,16 +72,18 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const handleSearch = useCallback(async (searchQuery: string) => {
+  const handleSearch = useCallback(async (searchQuery: string, overrideType?: MediaType) => {
     if (!searchQuery.trim()) return;
+    
+    const typeToSearch = overrideType || activeType;
     
     setIsLoading(true);
     setHasSearched(true);
     setResults([]);
-    addToHistory(searchQuery, activeType);
+    addToHistory(searchQuery, typeToSearch);
 
     try {
-      const data = await searchMedia(searchQuery, activeType);
+      const data = await searchMedia(searchQuery, typeToSearch);
       setResults(data);
     } catch (error) {
       console.error('Search failed:', error);
@@ -106,38 +108,22 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
   const handleHistoryClick = (historyQuery: string, historyType: MediaType) => {
     setQuery(historyQuery);
     setActiveType(historyType);
-    
-    // We need to wait for state to update before searching, 
-    // or just pass the type directly to a modified handleSearch.
-    // Since handleSearch uses the activeType from state (via useCallback deps),
-    // we should use a slight timeout or just call searchMedia directly here.
-    
-    setIsLoading(true);
-    setHasSearched(true);
-    setResults([]);
-    addToHistory(historyQuery, historyType);
-
-    searchMedia(historyQuery, historyType)
-      .then(data => setResults(data))
-      .catch(err => {
-        console.error('Search failed:', err);
-        setResults([]);
-      })
-      .finally(() => setIsLoading(false));
+    handleSearch(historyQuery, historyType);
   };
 
   return (
     <div className="flex flex-col h-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
       {/* Header / Search Bar Area */}
       <div className="px-4 pt-4 pb-2 z-10 bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)]">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center">
           <AnimatePresence>
             {(isFocused || hasSearched) && (
               <motion.button
-                initial={{ opacity: 0, width: 0, scale: 0.8 }}
-                animate={{ opacity: 1, width: 36, scale: 1 }}
-                exit={{ opacity: 0, width: 0, scale: 0.8 }}
+                initial={{ opacity: 0, width: 0, marginRight: 0, scale: 0.8 }}
+                animate={{ opacity: 1, width: 36, marginRight: 12, scale: 1 }}
+                exit={{ opacity: 0, width: 0, marginRight: 0, scale: 0.8 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   handleClearFocus();
                   setHasSearched(false);
@@ -166,6 +152,7 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
               onKeyDown={handleKeyDown}
               className="w-full bg-[var(--tertiary-system-background)] border border-[var(--separator)] rounded-full py-2.5 pl-10 pr-4 text-sm font-sans text-[var(--label)] placeholder:text-[var(--secondary-label)] focus:outline-none focus:ring-2 focus:ring-[var(--label)]/10 transition-all shadow-sm"
             />
@@ -182,9 +169,12 @@ export function AddView({ onAddItem, initialType }: { onAddItem: (item: SearchRe
               onClick={() => {
                 haptics.light();
                 setActiveType(type.id);
-                setQuery('');
-                setHasSearched(false);
-                setResults([]);
+                if (query.trim()) {
+                  handleSearch(query, type.id);
+                } else {
+                  setHasSearched(false);
+                  setResults([]);
+                }
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full whitespace-nowrap transition-all duration-300 ${
                 activeType === type.id

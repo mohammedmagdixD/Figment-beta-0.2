@@ -56,12 +56,14 @@ export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode,
     <section className="py-2 bg-transparent">
       <div className="flex items-center justify-between px-4 mb-3">
         <div className="flex items-center gap-2">
-          <div 
-            className="cursor-grab active:cursor-grabbing text-[var(--secondary-label)] hover:text-[var(--label)] transition-colors p-1 -ml-1 touch-none"
-            onPointerDown={(e) => dragControls?.start(e)}
-          >
-            <GripHorizontal className="w-5 h-5" />
-          </div>
+          {dragControls && (
+            <div 
+              className="cursor-grab active:cursor-grabbing text-[var(--secondary-label)] hover:text-[var(--label)] transition-colors p-1 -ml-1 touch-none"
+              onPointerDown={(e) => dragControls.start(e)}
+            >
+              <GripHorizontal className="w-5 h-5" />
+            </div>
+          )}
           <h2 className="font-serif text-xl font-semibold leading-relaxed text-[var(--label)]">
             {section.title}
           </h2>
@@ -92,7 +94,7 @@ export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode,
             playingId={playingId}
             onItemClick={setSelectedItem}
             onPlayToggle={togglePlay}
-            onAddToAlbum={section.type === 'music' ? setAddingToAlbumItem : undefined}
+            onAddToAlbum={(section.type === 'music' && onAddToAlbum) ? setAddingToAlbumItem : undefined}
           />
         ))}
       </div>
@@ -102,7 +104,7 @@ export function MediaScroller({ section, dragControls, onAddClick, onLogEpisode,
           <MediaDetailsModal 
             item={{...selectedItem, type: section.type}} 
             onClose={() => setSelectedItem(null)} 
-            onLogEpisode={(episode, rating, date, liked, rewatched) => onLogEpisode?.(episode, rating, date, liked, rewatched, selectedItem)}
+            onLogEpisode={onLogEpisode ? ((episode, rating, date, liked, rewatched) => onLogEpisode(episode, rating, date, liked, rewatched, selectedItem)) : undefined}
           />
         )}
         {addingToAlbumItem && onAddToAlbum && onCreateAlbum && (
