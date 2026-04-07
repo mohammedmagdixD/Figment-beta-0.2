@@ -115,15 +115,26 @@ export default function App() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
+  const profileRef = React.useRef(profile);
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  const viewingUserIdRef = React.useRef(viewingUserId);
+  useEffect(() => {
+    viewingUserIdRef.current = viewingUserId;
+  }, [viewingUserId]);
+
   useEffect(() => {
     async function loadData(path: string) {
       try {
-        setIsDataLoading(true);
         let targetUserId = user?.id;
         
         const handleMatch = path.match(/^\/@([\w.-]+)/);
         
-        if (handleMatch) {
+        if (path === '/' || path === '') {
+          setActiveTab('profile');
+        } else if (handleMatch) {
           const handle = handleMatch[1];
           const foundUser = await getUserByHandle(handle);
           if (foundUser) {
@@ -137,6 +148,15 @@ export default function App() {
           if (tabMatch) {
             setActiveTab(tabMatch[1] as TabType);
           }
+        }
+
+        if (targetUserId === viewingUserIdRef.current && profileRef.current.handle !== '@guest') {
+          setViewingUserId(targetUserId);
+          return;
+        }
+
+        if (profileRef.current.handle === '@guest' || !profileRef.current.handle) {
+          setIsDataLoading(true);
         }
 
         setViewingUserId(targetUserId);
