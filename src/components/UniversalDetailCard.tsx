@@ -154,13 +154,13 @@ export function UniversalDetailCard({ data }: UniversalDetailCardProps) {
         )}
 
         <div className="absolute -bottom-16 left-6 flex items-end gap-4">
-          <div className={`w-28 ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'aspect-square' : 'aspect-[2/3]'} rounded-xl overflow-hidden shadow-xl border-2 border-[var(--system-background)] shrink-0 bg-[var(--secondary-system-background)]`}>
+          <div className={`w-28 ${(data.mediaType === 'song' || data.mediaType === 'music' || data.mediaType === 'podcast') ? 'aspect-square' : 'aspect-[2/3]'} rounded-xl overflow-hidden shadow-md shrink-0 bg-[var(--secondary-system-background)]`}>
             <motion.img 
               layoutId={`poster-${data.id}`}
               onClick={() => setIsPosterExpanded(true)}
               src={data.images.posterUrl || undefined} 
               alt={data.header.title} 
-              className={`w-full h-full object-cover cursor-pointer ${(data.mediaType === 'song' || data.mediaType === 'music') ? 'rounded-full' : 'rounded-xl'}`}
+              className="w-full h-full object-cover cursor-pointer rounded-xl"
               referrerPolicy="no-referrer"
             />
           </div>

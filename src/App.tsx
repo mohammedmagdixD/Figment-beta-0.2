@@ -311,8 +311,8 @@ export default function App() {
           {/* iOS Status Bar Spacer (simulated for desktop view) */}
           <div className="hidden sm:block h-6 w-full bg-[var(--system-background)] dark:bg-[var(--secondary-system-background)] shrink-0" />
           
-          <div className="flex-1 overflow-y-auto hide-scrollbar scroll-container pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
-            <main className={`pb-12 space-y-2 ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
+          <div className="flex-1 overflow-hidden relative flex flex-col pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-[80px] pt-safe-top">
+            <main className={`flex-1 overflow-y-auto hide-scrollbar scroll-container pb-12 space-y-2 ${activeTab === 'profile' ? 'block' : 'hidden'}`}>
               <Header profile={profile} isOwnProfile={isOwnProfile} onRecommendClick={() => setIsRecommendModalOpen(true)} onAuthClick={() => setIsAuthModalOpen(true)} />
               <div className="w-full h-[0.5px] bg-[var(--separator)] my-4" />
               
@@ -410,22 +410,22 @@ export default function App() {
               <div className="h-4" /> {/* Spacer */}
             </main>
 
-            <main className={`pb-12 ${activeTab === 'diary' ? 'block' : 'hidden'}`}>
-              <div className="px-4 pt-4 pb-2">
+            <main className={`flex-1 overflow-hidden hide-scrollbar pb-12 flex flex-col ${activeTab === 'diary' ? 'flex' : 'hidden'}`}>
+              <div className="px-4 pt-4 pb-2 shrink-0">
                 <h2 className="font-serif text-2xl font-semibold text-[var(--label)]">Diary</h2>
               </div>
               <DiaryView entries={diary} />
             </main>
 
-            <main className={`pb-12 h-full flex flex-col ${activeTab === 'feed' ? 'flex' : 'hidden'}`}>
+            <main className={`flex-1 overflow-hidden hide-scrollbar pb-12 flex flex-col ${activeTab === 'feed' ? 'flex' : 'hidden'}`}>
               <FeedView />
             </main>
 
-            <main className={`pb-12 h-full flex flex-col ${activeTab === 'recommendations' ? 'flex' : 'hidden'}`}>
+            <main className={`flex-1 overflow-y-auto hide-scrollbar scroll-container pb-12 flex flex-col ${activeTab === 'recommendations' ? 'flex' : 'hidden'}`}>
               <RecommendationsView />
             </main>
 
-            <main className={`pb-12 h-full flex flex-col ${activeTab === 'add' ? 'flex' : 'hidden'}`}>
+            <main className={`flex-1 overflow-y-auto hide-scrollbar scroll-container pb-12 flex flex-col ${activeTab === 'add' ? 'flex' : 'hidden'}`}>
               <AddView onAddItem={handleAddItem} initialType={activeSection?.type} />
             </main>
           </div>

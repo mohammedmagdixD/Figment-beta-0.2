@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { motion } from 'motion/react';
 import { Play, Pause, ListPlus } from 'lucide-react';
 import { UniversalMediaData } from '../types/universal';
@@ -14,7 +14,7 @@ interface MediaCardProps {
   onAddToAlbum?: (item: any) => void;
 }
 
-export function MediaCard({
+const MediaCardComponent = ({
   item,
   sectionType,
   index,
@@ -23,7 +23,7 @@ export function MediaCard({
   onItemClick,
   onPlayToggle,
   onAddToAlbum
-}: MediaCardProps) {
+}: MediaCardProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
 
   const getAspectRatioClass = (type: string) => {
@@ -68,14 +68,11 @@ export function MediaCard({
       className={`snap-start card-container flex flex-col gap-2 group cursor-pointer ${getAspectRatioClass(sectionType)}`}
       onClick={() => onItemClick(item)}
     >
-      <div className={`relative overflow-hidden rounded-xl bg-[var(--secondary-system-background)] shadow-sm border border-[var(--separator)] card-image ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full scale-95' : ''}`}>
-        {(sectionType === 'music' || sectionType === 'song') && (
-          <div className="absolute inset-0 rounded-full border-[12px] border-ink-black/90 dark:border-white/10 pointer-events-none z-10 shadow-inner" />
-        )}
+      <div className="relative overflow-hidden rounded-xl bg-[var(--secondary-system-background)] shadow-sm border border-[var(--separator)] card-image">
         
         {/* Skeleton Placeholder */}
         {(!isLoaded && imageUrl) && (
-          <div className={`absolute inset-0 bg-[var(--secondary-system-background)] animate-pulse ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`} />
+          <div className="absolute inset-0 bg-[var(--secondary-system-background)] animate-pulse" />
         )}
 
         {/* Image */}
@@ -88,7 +85,7 @@ export function MediaCard({
             loading={isPriority ? "eager" : "lazy"}
             onLoad={() => setIsLoaded(true)}
             onError={() => setIsLoaded(true)}
-            className={`absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
             referrerPolicy="no-referrer"
           />
         ) : (
@@ -100,9 +97,9 @@ export function MediaCard({
         )}
         
         {/* Subtle inner shadow for depth */}
-        <div className={`absolute inset-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] pointer-events-none ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : 'rounded-xl'}`} />
+        <div className="absolute inset-0 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] pointer-events-none rounded-xl" />
         {/* Hover overlay */}
-        <div className={`absolute inset-0 bg-black/0 group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors duration-300 ${(sectionType === 'music' || sectionType === 'song') ? 'rounded-full' : ''}`} />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors duration-300" />
         {(item.previewUrl || (item.secondaryActionButton?.type === 'audio' && item.secondaryActionButton?.payload)) && (
           <button
             onClick={(e) => {
@@ -131,7 +128,7 @@ export function MediaCard({
           </button>
         )}
       </div>
-      <div className={`w-full ${(sectionType === 'music' || sectionType === 'song') ? 'text-center px-1' : ''}`}>
+      <div className="w-full">
         <h3 className="font-sans text-base font-semibold leading-tight text-[var(--label)] card-text-truncate">
           {item.title || item.header?.title}
         </h3>
@@ -141,4 +138,6 @@ export function MediaCard({
       </div>
     </motion.div>
   );
-}
+};
+
+export const MediaCard = memo(MediaCardComponent, (prevProps, nextProps) => prevProps.item.id === nextProps.item.id && prevProps.playingId === nextProps.playingId);
