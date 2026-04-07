@@ -81,7 +81,10 @@ const DiaryViewComponent = ({ entries }: { entries: DiaryEntry[] }) => {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <div 
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   className="flex gap-4 items-start pb-4 mb-4 border-b border-[var(--separator)] group"
                 >
                   <div className="w-12 shrink-0 pt-1 text-center">
@@ -133,7 +136,7 @@ const DiaryViewComponent = ({ entries }: { entries: DiaryEntry[] }) => {
                       </div>
                     )}
                   </div>
-                </div>
+                </motion.div>
               </div>
             );
           })}
