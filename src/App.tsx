@@ -13,7 +13,7 @@ import { Reorder, useDragControls, AnimatePresence } from 'motion/react';
 import { SearchResult, MediaType, Album } from './services/api';
 import { AlertTriangle, Loader2, ListPlus } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
-import { getUserProfile, logMediaItem, addSectionItem, syncMediaToShelf, getUserByHandle } from './services/supabaseData';
+import { getUserProfile, logMediaItem, addSectionItem, syncMediaToShelf, getUserByHandle, sendRecommendation } from './services/supabaseData';
 import { useDiary } from './hooks/useDiary';
 import { useShelves } from './hooks/useShelves';
 import { FeedView } from './views/FeedView';
@@ -291,9 +291,21 @@ export default function App() {
     }
   };
 
-  const handleRecommendSubmit = (recommendation: any) => {
-    console.log('Recommendation submitted:', recommendation);
-    // In a real app, this would send data to a backend
+  const handleRecommendSubmit = async (recommendation: any) => {
+    if (!viewingUserId) return;
+    try {
+      await sendRecommendation(
+        viewingUserId,
+        recommendation.item,
+        recommendation.message,
+        recommendation.isAnonymous,
+        user?.id
+      );
+      // Optional: Add a toast notification here
+      console.log('Recommendation submitted successfully');
+    } catch (error) {
+      console.error('Failed to send recommendation:', error);
+    }
   };
 
   if (isLoading || isDataLoading) {
@@ -422,7 +434,7 @@ export default function App() {
             </main>
 
             <main className={`flex-1 overflow-y-auto hide-scrollbar scroll-container pb-12 flex flex-col ${activeTab === 'recommendations' ? 'flex' : 'hidden'}`}>
-              <RecommendationsView />
+              <RecommendationsView viewingUserId={viewingUserId} />
             </main>
 
             <main className={`flex-1 overflow-y-auto hide-scrollbar scroll-container pb-12 flex flex-col ${activeTab === 'add' ? 'flex' : 'hidden'}`}>

@@ -3,7 +3,6 @@ import { MediaType } from '../services/api';
 import { Star, Heart, Repeat } from 'lucide-react';
 import { motion } from 'motion/react';
 import { haptics } from '../utils/haptics';
-import { useVirtualizer } from '@tanstack/react-virtual';
 
 export interface DiaryEntry {
   id: string;
@@ -30,13 +29,6 @@ const DiaryViewComponent = ({ entries }: { entries: DiaryEntry[] }) => {
 
   const filters = ['all', 'movie', 'book', 'anime', 'manga', 'music', 'podcast', 'webnovel'];
 
-  const virtualizer = useVirtualizer({
-    count: sorted.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 104, // Estimated height including gap
-    overscan: 5,
-  });
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 py-2 shrink-0">
@@ -59,28 +51,10 @@ const DiaryViewComponent = ({ entries }: { entries: DiaryEntry[] }) => {
       </div>
 
       <div ref={parentRef} className="flex-1 overflow-y-auto px-4 hide-scrollbar scroll-container">
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const entry = sorted[virtualRow.index];
+        <div className="flex flex-col">
+          {sorted.map((entry) => {
             return (
-              <div
-                key={entry.id}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
+              <div key={entry.id}>
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}

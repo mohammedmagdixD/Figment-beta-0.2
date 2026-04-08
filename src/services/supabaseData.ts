@@ -1,3 +1,17 @@
+/*
+ * RLS Policies for `recommendations` table:
+ * 
+ * -- Enable RLS
+ * ALTER TABLE recommendations ENABLE ROW LEVEL SECURITY;
+ * 
+ * -- Allow anyone (authenticated or anon) to insert a recommendation
+ * CREATE POLICY "Anyone can insert recommendations" ON recommendations
+ *   FOR INSERT WITH CHECK (true);
+ * 
+ * -- Allow users to view only their own received recommendations
+ * CREATE POLICY "Users can view their own recommendations" ON recommendations
+ *   FOR SELECT USING (auth.uid() = recipient_id);
+ */
 import { supabase } from './supabase';
 import { UniversalMediaData } from '../types/universal';
 
@@ -308,13 +322,67 @@ export async function syncMediaToShelf(userId: string, mediaItem: any) {
   }
 }
 
+export async function sendRecommendation(
+  receiverId: string,
+  mediaItem: any,
+  message: string,
+  isAnonymous: boolean,
+  senderId?: string
+) {
+  try {
+    // 1. Upsert into media_items
+    const { data: mediaData, error: mediaError } = await supabase
+      .from('media_items')
+      .upsert({
+        external_id: String(mediaItem.id),
+        media_type: mediaItem.type || mediaItem.mediaType || 'unknown',
+        provider: mediaItem.provider || 'unknown',
+        title: mediaItem.title || mediaItem.header?.title || '',
+        subtitle: mediaItem.subtitle || mediaItem.header?.subtitle || '',
+        image_url: mediaItem.image || mediaItem.images?.posterUrl || mediaItem.images?.backdropUrl || '',
+      }, { onConflict: 'external_id,media_type' })
+      .select('id')
+      .single();
+
+    if (mediaError) throw mediaError;
+
+    // 2. Insert into recommendations
+    const { data: recData, error: recError } = await supabase
+      .from('recommendations')
+      .insert({
+        recipient_id: receiverId,
+        media_item_id: mediaData.id,
+        message: message,
+        is_anonymous: isAnonymous,
+        sender_id: senderId || null,
+      })
+      .select()
+      .single();
+
+    if (recError) throw recError;
+
+    return recData;
+  } catch (error) {
+    console.error('Error sending recommendation:', error);
+    throw error;
+  }
+}
+
 export async function getRecommendations(userId: string) {
   try {
-    // Scaffold for future recommendations table
     const { data, error } = await supabase
       .from('recommendations')
-      .select('*')
-      .eq('user_id', userId)
+      .select(`
+        *,
+        media_items (*),
+        sender:users!sender_id (
+          id,
+          name,
+          handle,
+          avatar_url
+        )
+      `)
+      .eq('recipient_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {

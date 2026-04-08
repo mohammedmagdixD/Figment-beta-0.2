@@ -4,6 +4,7 @@ import { X, Search, Loader2, Music, Book, Film, Tv, Headphones, Check } from 'lu
 import { searchMedia, SearchResult, MediaType } from '../services/api';
 import { haptics } from '../utils/haptics';
 import { useScrollLock } from '../hooks/useScrollLock';
+import { useAuth } from '../contexts/AuthContext';
 
 interface RecommendationModalProps {
   isOpen: boolean;
@@ -12,28 +13,34 @@ interface RecommendationModalProps {
 }
 
 const MEDIA_TYPES: { id: MediaType; label: string; icon: React.ReactNode }[] = [
+  { id: 'movie', label: 'Films', icon: <Film className="w-4 h-4" /> },
+  { id: 'tv', label: 'TV Shows', icon: <Tv className="w-4 h-4" /> },
   { id: 'music', label: 'Music', icon: <Music className="w-4 h-4" /> },
-  { id: 'podcast', label: 'Podcast', icon: <Headphones className="w-4 h-4" /> },
-  { id: 'book', label: 'Book', icon: <Book className="w-4 h-4" /> },
-  { id: 'movie', label: 'Movie', icon: <Film className="w-4 h-4" /> },
   { id: 'anime', label: 'Anime', icon: <Tv className="w-4 h-4" /> },
   { id: 'manga', label: 'Manga', icon: <Book className="w-4 h-4" /> },
-  { id: 'webnovel', label: 'Web Novel', icon: <Book className="w-4 h-4" /> },
+  { id: 'book', label: 'Books', icon: <Book className="w-4 h-4" /> },
+  { id: 'podcast', label: 'Podcasts', icon: <Headphones className="w-4 h-4" /> },
+  { id: 'webnovel', label: 'Webnovels', icon: <Book className="w-4 h-4" /> },
 ];
 
 export function RecommendationModal({ isOpen, onClose, onSubmit }: RecommendationModalProps) {
+  const { user } = useAuth();
   useScrollLock(isOpen);
 
-  const [activeType, setActiveType] = useState<MediaType>('music');
+  const [activeType, setActiveType] = useState<MediaType>('movie');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
   const [message, setMessage] = useState('');
-  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(!user);
   const [error, setError] = useState<string | null>(null);
 
   const searchTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setIsAnonymous(!user);
+  }, [user]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -41,10 +48,10 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
       setResults([]);
       setSelectedItem(null);
       setMessage('');
-      setIsAnonymous(false);
+      setIsAnonymous(!user);
       setError(null);
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
   useEffect(() => {
     if (query.length < 2) {
@@ -102,7 +109,7 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 z-50 flex sm:items-center justify-center">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -129,7 +136,7 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
             onClick={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
-            className="relative w-full max-w-2xl bg-white dark:bg-ink-black rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] pb-[env(safe-area-inset-bottom)]"
+            className="absolute bottom-0 sm:relative w-full max-w-2xl bg-white dark:bg-ink-black rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] pb-[env(safe-area-inset-bottom)]"
           >
             <div className="w-full flex justify-center pt-3 pb-1 shrink-0 sm:hidden">
               <div className="w-10 h-1 bg-gray-300 dark:bg-gray-700 rounded-full" />
@@ -276,7 +283,21 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
               </div>
 
               {/* Anonymize Toggle */}
-              <label className="flex items-center gap-3 p-4 border border-black/10 dark:border-white/10 rounded-2xl cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <label 
+                className={`flex items-center gap-3 p-4 border border-black/10 dark:border-white/10 rounded-2xl transition-colors ${!user ? 'opacity-60 cursor-not-allowed bg-black/5 dark:bg-white/5' : 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5'}`}
+                onClick={(e) => {
+                  if (!user) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={isAnonymous} 
+                  onChange={(e) => { if (user) setIsAnonymous(e.target.checked); }} 
+                  disabled={!user} 
+                />
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isAnonymous ? 'bg-ink-black dark:bg-white border-ink-black dark:border-white' : 'border-gray dark:border-ios-gray-1'}`}>
                   {isAnonymous && <Check className="w-3.5 h-3.5 text-white dark:text-ink-black" />}
                 </div>
@@ -284,7 +305,9 @@ export function RecommendationModal({ isOpen, onClose, onSubmit }: Recommendatio
                   <div className="font-medium text-ink-black dark:text-white flex items-center gap-2">
                     Anonymize Response
                   </div>
-                  <p className="text-sm text-gray dark:text-ios-gray-1">Your recommendation will be sent anonymously</p>
+                  <p className="text-sm text-gray dark:text-ios-gray-1">
+                    {!user ? 'Guests always recommend anonymously' : 'Your recommendation will be sent anonymously'}
+                  </p>
                 </div>
               </label>
             </div>
